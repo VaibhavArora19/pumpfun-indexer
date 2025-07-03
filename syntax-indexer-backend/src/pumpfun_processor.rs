@@ -6,11 +6,12 @@ use carbon_pumpfun_decoder::instructions::PumpfunInstruction;
 use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use sqlx::PgPool;
 
-use crate::db::create_token;
+use crate::{config::IndexerConfig, db::create_token};
 
 
 pub struct PumpfunInstructionProcessor {
     pub db: Arc<PgPool>,
+    pub config: IndexerConfig
 }
 
 #[async_trait]
@@ -31,7 +32,7 @@ impl Processor for PumpfunInstructionProcessor {
         match pumpfun_instruction {
             PumpfunInstruction::CreateEvent(create_event) => {
                 log::info!("New token created: {:#?}", create_event);
-                create_token(self.db.clone(), create_event).await;
+                create_token(self.db.clone(), &self.config, create_event).await;
             }
             PumpfunInstruction::TradeEvent(trade_event) => {
                 

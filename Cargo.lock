@@ -7016,6 +7016,7 @@ dependencies = [
  "solana-pubkey",
  "solana-sdk",
  "solana-transaction-status",
+ "spl-associated-token-account-client",
  "sqlx",
  "thiserror 2.0.12",
  "tokio",

@@ -3,11 +3,13 @@ use std::sync::Arc;
 use carbon_pumpfun_decoder::instructions::create_event::CreateEvent;
 use sqlx::{types::chrono::Utc, PgPool};
 
-use crate::types::BondStatus;
+use crate::{config::IndexerConfig, helpers::get_creator_holding_percentage, types::BondStatus};
 
-pub async fn create_token(db: Arc<PgPool>, create_event: CreateEvent) {
+pub async fn create_token(db: Arc<PgPool>, config: &IndexerConfig, create_event: CreateEvent) {
     let id = uuid::Uuid::new_v4();
     let current_time = Utc::now();
+
+    let holding_percentage = get_creator_holding_percentage(create_event.creator, create_event.mint, config).await;
 
     let insert_sql = r#"
     INSERT INTO token(
@@ -31,8 +33,8 @@ pub async fn create_token(db: Arc<PgPool>, create_event: CreateEvent) {
     .bind(create_event.name)
     .bind(create_event.symbol)
     .bind(create_event.mint.to_string())
-    .bind(BondStatus::NewlyLaunched) //todo: 
-    .bind(0) //todo: 
+    .bind(BondStatus::NewlyLaunched)
+    .bind(holding_percentage.floor() as i64) 
     .bind(create_event.uri)
     .bind(create_event.bonding_curve.to_string())
     .bind(create_event.user.to_string())

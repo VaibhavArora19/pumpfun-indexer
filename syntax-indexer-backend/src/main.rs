@@ -1,11 +1,9 @@
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 use carbon_core::pipeline::Pipeline;
-use carbon_pumpfun_decoder::{instructions::create_event::CreateEvent, PumpfunDecoder};
+use carbon_pumpfun_decoder::PumpfunDecoder;
 use dotenv::dotenv;
-use solana_pubkey::Pubkey;
-
-use crate::{config::IndexerConfig, db::create_token, pumpfun_processor::PumpfunInstructionProcessor, utils::connect_db};
+use crate::{config::IndexerConfig, pumpfun_processor::PumpfunInstructionProcessor, utils::connect_db};
 
 mod config;
 mod pumpfun_processor;
@@ -14,6 +12,7 @@ mod types;
 mod utils;
 mod db;
 mod decoder;
+mod helpers;
 
 //first thing tommorow is to sort the bonding curve i.e. get data from bonding curve account and check how much bonded and how much not
 #[tokio::main]
@@ -34,7 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // create_token(db.clone(), CreateEvent { name: "hello".to_string(), symbol: "helllo".to_string(), uri: "https".to_string(), mint: Pubkey::from_str("B1Ni4dMNFvRXXV6qCtC98vSYNy6fKidsUtQrs5mqpump").unwrap(), bonding_curve: Pubkey::from_str("FdGc4Ns4dKbFv8ADKgS66tWR8CyxPJbtJcJHheNM3C8N").unwrap(), user: Pubkey::from_str("3BJ6qHbt6U7EnUAFP2cwP8ydz5iiGfReRvGnnB3uygfd").unwrap(), creator: Pubkey::from_str("3BJ6qHbt6U7EnUAFP2cwP8ydz5iiGfReRvGnnB3uygfd").unwrap(), timestamp: 1751536646 }).await;
 
     let instruction_processor = PumpfunInstructionProcessor {
-        db
+        db,
+        config
     };
 
     Pipeline::builder()
