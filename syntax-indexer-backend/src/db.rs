@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use carbon_pumpfun_decoder::instructions::create_event::CreateEvent;
+use solana_pubkey::Pubkey;
 use sqlx::{types::chrono::Utc, PgPool};
 
 use crate::{config::IndexerConfig, helpers::get_creator_holding_percentage, types::BondStatus};
@@ -44,4 +45,18 @@ pub async fn create_token(db: Arc<PgPool>, config: &IndexerConfig, create_event:
     }
 
     
+}
+
+pub async fn change_status(bond_status: BondStatus, mint: Pubkey, db: Arc<PgPool>) {
+    let update_sql = r#"
+    UPDATE token SET bond_status = $1 WHERE contract_address = $2
+    "#;
+
+    if let Err(err) = sqlx::query(update_sql)
+    .bind(bond_status)
+    .bind(mint.to_string())
+    .execute(&*db)
+    .await {
+        eprintln!("Failed to update the bond status. Failed with err: {:?}", err);
+    }
 }

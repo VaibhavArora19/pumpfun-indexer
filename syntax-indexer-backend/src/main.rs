@@ -11,7 +11,6 @@ mod helius_websocket;
 mod types;
 mod utils;
 mod db;
-mod decoder;
 mod helpers;
 
 //first thing tommorow is to sort the bonding curve i.e. get data from bonding curve account and check how much bonded and how much not

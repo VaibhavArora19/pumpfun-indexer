@@ -1,6 +1,6 @@
 use anyhow::Error;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{commitment_config::CommitmentConfig, stake::config};
+use solana_sdk::{commitment_config::CommitmentConfig};
 use sqlx::PgPool;
 
 use crate::config::IndexerConfig;
