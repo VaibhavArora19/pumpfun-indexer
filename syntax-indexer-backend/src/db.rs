@@ -10,7 +10,7 @@ use crate::{config::IndexerConfig, helpers::get_creator_holding_percentage, type
 pub struct BondingCurveInfo {
     pub contract_address: String,
     pub bonding_curve_address: String,
-    pub bonding_curve_percentage: String,
+    pub bonding_curve_percentage: i64,
 }
 
 pub async fn create_token(db: Arc<PgPool>, config: &IndexerConfig, create_event: CreateEvent) {
