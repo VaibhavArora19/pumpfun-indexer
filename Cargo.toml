@@ -1,0 +1,49 @@
+[profile.release]
+opt-level = "z"        # Optimize for size.
+strip = true           # Automatically strip symbols from the binary.
+lto = true             # Enable Link Time Optimization (LTO)
+codegen-units = 1      # Reduce Parallel Code Generation Units to Increase Optimization
+panic = "abort"
+overflow-checks = true
+
+[workspace.package]
+authors = ["Vaibhav Arora"]
+edition = "2021"
+license = ""
+keywords = ["solana"]
+publish = false
+
+[workspace]
+resolver = "2"
+members = ["db","syntax-indexer-backend"]
+
+[workspace.dependencies]
+carbon-core = "0.8"
+anyhow = "1.0.95"
+solana-transaction-status = "2.2.1"
+solana-account-decoder = "=2.2.1"
+solana-client = "=2.2.1"
+solana-sdk = "=2.2.1"
+carbon-rpc-block-subscribe-datasource = "0.8"
+dotenv = "0.15.0"
+thiserror = "2.0.12"
+carbon-pumpfun-decoder = "0.8"
+tokio = { version = "1.43.0", features = ["full"] }
+log = { version = "0.4.25", features = ["kv_serde"] }
+env_logger = "0.11.6"
+async-trait = "0.1.88"
+carbon-helius-atlas-ws-datasource = "0.8"
+helius = "0.2.6"
+tracing-subscriber = "0.3.19"
+carbon-rpc-program-subscribe-datasource = "0.8"
+serde = "1.0.219"
+serde_json = "1.0.140"
+carbon-pump-swap-decoder = "0.8"
+solana-instruction = "2.2.1"
+solana-pubkey = "2.2.1"
+refinery = { version = "0.8.16", features = ["postgres"] }
+sqlx = { version = "0.6", features = [
+	"postgres",
+	"runtime-tokio-rustls",
+     "macros", "chrono", "uuid"
+] }
