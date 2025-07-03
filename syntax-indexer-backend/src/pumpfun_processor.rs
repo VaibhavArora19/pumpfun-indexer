@@ -1,17 +1,26 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
-use carbon_core::{error::CarbonResult, instruction::InstructionProcessorInputType, metrics::MetricsCollection, processor::Processor};
+use carbon_core::{
+    error::CarbonResult, instruction::InstructionProcessorInputType, metrics::MetricsCollection,
+    processor::Processor,
+};
 use carbon_pumpfun_decoder::instructions::PumpfunInstruction;
+use redis::Connection;
 use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use sqlx::PgPool;
 
-use crate::{config::IndexerConfig, db::{change_status, create_token}, types::BondStatus};
-
+use crate::{
+    config::IndexerConfig,
+    db::{change_status, create_token},
+    types::BondStatus, BondingStateMap,
+};
 
 pub struct PumpfunInstructionProcessor {
     pub db: Arc<PgPool>,
-    pub config: IndexerConfig
+    pub config: IndexerConfig,
+    pub redis: Arc<Connection>,
+    pub bonding_state_map: BondingStateMap
 }
 
 #[async_trait]
@@ -35,7 +44,6 @@ impl Processor for PumpfunInstructionProcessor {
                 create_token(self.db.clone(), &self.config, create_event).await;
             }
             PumpfunInstruction::TradeEvent(trade_event) => {
-                
                 if trade_event.sol_amount > 10 * LAMPORTS_PER_SOL {
                     // log::info!("Big trade occured: {:#?}", trade_event);
                 }

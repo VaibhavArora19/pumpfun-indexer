@@ -49,3 +49,4 @@ sqlx = { version = "0.6", features = [
 ] }
 uuid = { version = "1.13.1", features = ["v4"] }
 spl-associated-token-account-client = "2.0.0"
+redis = { version = "0.32.3", features = ["tokio-comp"] }

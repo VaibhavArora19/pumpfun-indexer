@@ -34,3 +34,4 @@ env_logger = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 spl-associated-token-account-client = { workspace = true }
+redis = { workspace = true }

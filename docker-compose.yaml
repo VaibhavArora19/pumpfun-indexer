@@ -8,3 +8,8 @@ services:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: postgrespassword
       POSTGRES_DB: indexer
+  redis:
+    image: redis
+    restart: always
+    ports:
+      - "6379:6379"
