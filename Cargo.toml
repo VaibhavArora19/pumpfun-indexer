@@ -47,3 +47,4 @@ sqlx = { version = "0.6", features = [
 	"runtime-tokio-rustls",
      "macros", "chrono", "uuid"
 ] }
+uuid = { version = "1.13.1", features = ["v4"] }
