@@ -1,16 +1,17 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::{Arc, RwLock}};
 
 use carbon_pumpfun_decoder::instructions::create_event::CreateEvent;
 use solana_pubkey::Pubkey;
-use sqlx::{types::chrono::Utc, PgPool};
+use sqlx::{postgres::PgArguments, query_with, types::chrono::Utc, Arguments, PgPool};
 
-use crate::{config::IndexerConfig, helpers::get_creator_holding_percentage, types::BondStatus};
+use crate::{config::IndexerConfig, helpers::get_creator_holding_percentage, types::BondStatus, BondingMcStateMap};
 
 #[derive(sqlx::FromRow, Debug, Clone)]
-pub struct BondingCurveInfo {
+pub struct BondingCurveAndMcInfo {
     pub contract_address: String,
     pub bonding_curve_address: String,
-    pub bonding_curve_percentage: i64,
+    pub bonding_curve_percentage: i32,
+    pub market_cap: Option<i64>
 }
 
 pub async fn create_token(db: Arc<PgPool>, config: &IndexerConfig, create_event: CreateEvent) {
@@ -72,13 +73,13 @@ pub async fn change_status(bond_status: BondStatus, mint: Pubkey, db: Arc<PgPool
     }
 }
 
-pub async fn get_bonding_curve_info(
+pub async fn get_bonding_curve_and_mc_info(
     db: Arc<PgPool>,
-) -> Result<Vec<BondingCurveInfo>, anyhow::Error> {
+) -> Result<Vec<BondingCurveAndMcInfo>, anyhow::Error> {
     let query =
-        r#"SELECT contract_address, bonding_curve_address, bonding_curve_percentage FROM token"#;
+        r#"SELECT contract_address, bonding_curve_address, bonding_curve_percentage, market_cap FROM token"#;
 
-    let bonding_curve_info = match sqlx::query_as::<_, BondingCurveInfo>(query)
+    let bonding_curve_info = match sqlx::query_as::<_, BondingCurveAndMcInfo>(query)
         .fetch_all(&*db)
         .await
     {
@@ -92,4 +93,47 @@ pub async fn get_bonding_curve_info(
     };
 
     return Ok(bonding_curve_info);
+}
+
+
+pub async fn update_bonding_curve_and_market_cap(db: Arc<PgPool>, updates: BondingMcStateMap) {
+    log::info!("Entered into sql function");
+    let mut sql = String::from("UPDATE token AS t SET market_cap = u.market_cap, bonding_curve_percentage = u.bonding_curve_percentage FROM (VALUES");
+
+    let updates_ref = {
+        let reference = updates.read().await.clone();
+        reference
+    };
+    
+    //clear the map after flushing into DB to avoid memory issues
+    {
+        let mut clean_map = updates.write().await;
+        clean_map.clear();
+    }
+
+    let mut args = PgArguments::default();
+
+    for (i, update) in updates_ref.iter().enumerate() {
+        if i > 0 {
+            sql.push_str(", ");
+        }
+
+        let base = i * 3;
+
+        sql.push_str(&format!("(${}, ${}, ${})", base + 1, base + 2, base + 3));
+
+        args.add(&update.0);
+        args.add(&update.1.market_cap);
+        args.add(&update.1.bonding_curve_percentage);
+    }
+
+    sql.push_str(") AS u(contract_address, market_cap, bonding_curve_percentage) WHERE u.contract_address = t.contract_address");
+
+    if let Err(err) = query_with(&sql, args).execute(&*db).await {
+        eprintln!("Failed to save the data. Failed with error: {:?}", err);
+    };
+
+    log::info!("Update data with updates: {:#?}", updates);
+
+    
 }

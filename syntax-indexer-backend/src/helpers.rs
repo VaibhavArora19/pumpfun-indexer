@@ -1,7 +1,21 @@
+use std::{collections::HashMap, sync::Arc};
+
+use anyhow::Error;
+use serde::{Deserialize, Serialize};
+use solana_client::client_error::reqwest::{self, header::{HeaderMap, HeaderValue, CONTENT_TYPE}};
 use solana_pubkey::Pubkey;
+use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use spl_associated_token_account_client::address::get_associated_token_address;
+use tokio::sync::RwLock;
 
 use crate::{config::IndexerConfig, utils::get_connection};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CoinPriceData {
+    pub usd: f64,
+}
+
+pub type CoinPriceResponse = HashMap<String, CoinPriceData>;
 
 pub async fn get_creator_holding_percentage(
     wallet_address: Pubkey,
@@ -33,16 +47,65 @@ pub fn get_bonding_curve_progress(
     real_token_reserves: u128,
     initial_real_token_reserves: u128,
 ) -> u128 {
-    // Assuming all types are u128
-    let bonding_curve_progress_value = 100u128
-        .checked_sub(
-            real_token_reserves
-                .checked_mul(100)
-                .unwrap()
-                .checked_div(initial_real_token_reserves)
-                .unwrap(),
-        )
-        .unwrap();
+    let left_tokens = (real_token_reserves / 10u128.pow(6)) - 206900000;
 
-    return bonding_curve_progress_value;
+    println!("details: {} {}", left_tokens, initial_real_token_reserves);
+
+    let bonding_curve: f64 = 100.0 - ((left_tokens as f64 / initial_real_token_reserves as f64) * 100.0);
+
+    return bonding_curve.floor() as u128
+}
+
+pub async fn get_market_cap(virtual_sol_reserves: u64, virtual_token_reserve: u64, decimals: i64, total_supply:u64, sol_price_usd: Arc<RwLock<f64>>) -> i64 {
+    let sol_price_usd = {
+        let read_guard = sol_price_usd.read().await;
+        *read_guard
+    };
+
+    println!("sol price usd: {}", sol_price_usd);
+
+    let sol_reserve = virtual_sol_reserves / LAMPORTS_PER_SOL;
+    let token_reserve = virtual_token_reserve / 10u64.pow(decimals as u32);
+
+    println!("sol reserve, {} {}", sol_reserve, token_reserve);
+
+    let token_price_sol: f64 = sol_reserve as f64 / token_reserve as f64;
+
+    let token_price_usd = token_price_sol * sol_price_usd as f64;
+
+    println!("token price usd: {}", token_price_usd);
+
+    let mc= token_price_usd * total_supply as f64;
+
+    return mc as i64;
+}
+
+pub async fn get_latest_sol_price() -> Result<f64, Error>{
+
+    let api_key = IndexerConfig::get_config().coingecko_api;
+
+    let coingecko_url = "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd";
+
+    let mut headers = HeaderMap::new();
+
+    headers.insert("x-cg-api-key", HeaderValue::from_str(&api_key).unwrap());
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+
+
+    let client = reqwest::Client::new();
+
+    let res = client.get(coingecko_url).headers(headers).send().await.unwrap();
+
+    let response: CoinPriceResponse = match res.json().await {
+        Ok(r) => r,
+        Err(err) => {
+            log::error!(
+                "Failed to parse api response. Failed with error: {}",
+                err
+            );
+            return Err(Error::msg("Failed to parse api response")); 
+        }
+    };
+
+    return Ok(response.get("solana").unwrap().usd);
 }

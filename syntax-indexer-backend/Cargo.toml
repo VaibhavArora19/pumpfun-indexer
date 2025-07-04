@@ -35,3 +35,5 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 spl-associated-token-account-client = { workspace = true }
 redis = { workspace = true }
+reqwest = { workspace = true }
+once_cell = { workspace = true }

@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
 
 use async_trait::async_trait;
 use carbon_core::{
@@ -7,18 +7,19 @@ use carbon_core::{
 };
 use carbon_pumpfun_decoder::instructions::PumpfunInstruction;
 use redis::Connection;
-use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use sqlx::PgPool;
+use tokio::sync::RwLock;
 
 use crate::{
-    config::IndexerConfig, db::{change_status, create_token, BondingCurveInfo}, helpers::get_bonding_curve_progress, types::BondStatus, BondingStateMap
+    config::IndexerConfig, db::{change_status, create_token, BondingCurveAndMcInfo}, helpers::{get_bonding_curve_progress, get_market_cap}, types::BondStatus, BondingMcStateMap
 };
 
 pub struct PumpfunInstructionProcessor {
     pub db: Arc<PgPool>,
     pub config: IndexerConfig,
     pub redis: Arc<Connection>,
-    pub bonding_state_map: BondingStateMap
+    pub bonding_state_map: BondingMcStateMap,
+    pub sol_price: Arc<RwLock<f64>>
 }
 
 #[async_trait]
@@ -30,10 +31,8 @@ impl Processor for PumpfunInstructionProcessor {
         data: Self::InputType,
         _metrics: Arc<MetricsCollection>,
     ) -> CarbonResult<()> {
-        println!("entered here");
         let pumpfun_instruction: PumpfunInstruction = data.1.data;
         // println!("pump fun {:?}", pumpfun_instruction);
-        println!("Triggered");
 
         //in case of sell event you are getting the creator address in create event so in every sell event, check if creator sold and store
         match pumpfun_instruction {
@@ -41,24 +40,31 @@ impl Processor for PumpfunInstructionProcessor {
                 log::info!("New token created: {:#?}", create_event);
                 create_token(self.db.clone(), &self.config, create_event.clone()).await;
             
-                let mut map = self.bonding_state_map.write().unwrap();
-            
-                map.insert(create_event.mint.to_string(), BondingCurveInfo {
+                let mut map = self.bonding_state_map.write().await;
+
+                map.insert(create_event.mint.to_string(), BondingCurveAndMcInfo {
                     contract_address: create_event.mint.to_string(),
                     bonding_curve_address: create_event.bonding_curve.to_string(),
-                    bonding_curve_percentage: 0
+                    bonding_curve_percentage: 0,
+                    market_cap: Some(0) //todo
                 });
             }
             PumpfunInstruction::TradeEvent(trade_event) => {
                     // log::info!("Big trade occured: {:#?}", trade_event);
-                    let mut map = self.bonding_state_map.write().unwrap();
+                    let mut map = self.bonding_state_map.write().await;
 
-                    let progress = get_bonding_curve_progress(trade_event.real_token_reserves as u128, 0); //todo: get initial token reserve                
-                    
-                    let result = i64::try_from(progress).unwrap();
+                    // if it exists in our DB then only process it
+                    if let Some(event) = map.get_mut(&trade_event.mint.to_string()) {
+                        let progress = get_bonding_curve_progress(trade_event.real_token_reserves as u128, 793100000);               
+                        
+                        let curve_result = i64::try_from(progress).unwrap();
 
-                    if let Some(value) = map.get_mut(&trade_event.mint.to_string()) {
-                        value.bonding_curve_percentage = result;
+                        let market_cap = get_market_cap(trade_event.virtual_sol_reserves, trade_event.virtual_token_reserves, 6, 1000000000, self.sol_price.clone()).await;
+                        
+                        log::info!("details for mint: {:#?} {:?} {:?}", trade_event.mint, market_cap, curve_result);
+
+                        event.bonding_curve_percentage = curve_result as i32;
+                        event.market_cap = Some(market_cap);
                     }
             }
             PumpfunInstruction::CompleteEvent(complete_event) => {
