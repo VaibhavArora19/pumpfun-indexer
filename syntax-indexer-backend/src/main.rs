@@ -9,10 +9,13 @@ use crate::{
     pumpfun_processor::PumpfunInstructionProcessor,
     utils::connect_db,
 };
+use actix_cors::Cors;
+use actix_web::{get, web, App, HttpResponse, HttpServer};
 use carbon_core::pipeline::Pipeline;
-use carbon_pumpfun_decoder::{instructions::trade_event::TradeEvent, PumpfunDecoder};
+use carbon_pumpfun_decoder::{PumpfunDecoder};
 use dotenv::dotenv;
 use redis::AsyncCommands;
+use sqlx::PgPool;
 use tokio::{sync::RwLock, time};
 
 mod config;
@@ -25,8 +28,19 @@ mod utils;
 
 pub type BondingMcStateMap = Arc<RwLock<HashMap<String, BondingCurveAndMcInfo>>>;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[get("/tokens")]
+async fn get_tokens(db : web::Data<Arc<PgPool>>) -> HttpResponse {
+
+    let conn = db.get_ref();
+
+    let result = fetch_token_data(conn).await;
+
+    HttpResponse::Ok().json(&result)
+
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> std::io::Result<()> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
 
@@ -35,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = Arc::new(
         connect_db(&config.database_url)
             .await
-            .map_err(|_| anyhow::Error::msg("Failed to connect to DB"))?,
+            .map_err(|_| anyhow::Error::msg("Failed to connect to DB")).unwrap(),
     );
 
     log::info!("Database Connected");
@@ -113,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let instruction_processor = PumpfunInstructionProcessor {
-        db,
+        db: db.clone(),
         config,
         redis: connection,
         bonding_state_map: bonding_curve_and_mc_info_map,
@@ -124,14 +138,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .datasource(helius_websocket::get_helius_websocket())
         .instruction(PumpfunDecoder, instruction_processor)
         .shutdown_strategy(carbon_core::pipeline::ShutdownStrategy::Immediate)
-        .build()?
+        .build().unwrap()
         .run()
-        .await?;
+        .await.unwrap();
 
-    // Keep the main task alive indefinitely
-    tokio::signal::ctrl_c()
-        .await
-        .expect("Failed to listen for shutdown signal");
 
-    Ok(())
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(db.clone()))
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allowed_methods(vec!["GET"])
+            )
+            .service(get_tokens) 
+    })
+    .bind(("0.0.0.0", 8000))?
+    .run()
+    .await
 }

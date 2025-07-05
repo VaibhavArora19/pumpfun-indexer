@@ -6,9 +6,9 @@ use carbon_core::{
     processor::Processor,
 };
 use carbon_pumpfun_decoder::instructions::PumpfunInstruction;
-use redis::aio::{ConnectionManager, MultiplexedConnection};
+use redis::aio::{MultiplexedConnection};
 use sqlx::PgPool;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{RwLock};
 
 use crate::{
     config::IndexerConfig,
@@ -52,7 +52,7 @@ impl Processor for PumpfunInstructionProcessor {
                         contract_address: create_event.mint.to_string(),
                         bonding_curve_address: create_event.bonding_curve.to_string(),
                         bonding_curve_percentage: 0,
-                        market_cap: Some(0), //todo
+                        market_cap: Some(0),
                     },
                 );
             }

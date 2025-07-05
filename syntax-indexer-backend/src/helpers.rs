@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Error;
 use carbon_pumpfun_decoder::instructions::trade_event::TradeEvent;
-use log::info;
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use serde::{Deserialize, Serialize};
 use solana_account_decoder::parse_token::UiTokenAmount;

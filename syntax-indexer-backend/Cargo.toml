@@ -36,3 +36,5 @@ uuid = { workspace = true }
 spl-associated-token-account-client = { workspace = true }
 redis = { workspace = true }
 reqwest = { workspace = true }
+actix-web = { workspace = true }
+actix-cors = { workspace = true }

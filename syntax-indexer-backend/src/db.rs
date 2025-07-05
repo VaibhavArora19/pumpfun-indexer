@@ -1,11 +1,11 @@
 use std::{collections::{HashMap, HashSet}, sync::Arc};
 
-use carbon_pumpfun_decoder::instructions::{create_event::CreateEvent, trade_event::TradeEvent};
+use carbon_pumpfun_decoder::instructions::{create_event::CreateEvent};
 use redis::{aio::MultiplexedConnection, AsyncCommands};
-use serde::{de::value, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use solana_pubkey::Pubkey;
 use sqlx::{
-    postgres::PgArguments, prelude::FromRow, query_with, types::chrono::{DateTime, Utc}, Arguments, PgPool,
+    postgres::PgArguments, prelude::FromRow, query_with, types::chrono::{DateTime, Utc}, Arguments, PgPool, Pool, Postgres,
 };
 use uuid::Uuid;
 
@@ -53,9 +53,9 @@ pub struct Token {
     creator_address: String
 }
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TokenDetails {
-    id: uuid::Uuid,
+    id: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     name: String,
@@ -264,7 +264,7 @@ pub async fn store_trades(redis: &mut MultiplexedConnection, db: Arc<PgPool>) {
     }
 }
 
-pub async fn fetch_token_data(db: Arc<PgPool>) -> Vec<TokenDetails> {
+pub async fn fetch_token_data(db: &Pool<Postgres>) -> Vec<TokenDetails> {
 let all_trades = sqlx::query_as::<_, Trade>(r#"SELECT * FROM trade"#).fetch_all(&*db).await.unwrap();
 let all_tokens = sqlx::query_as::<_, Token>(r#"SELECT * FROM token"#).fetch_all(&*db).await.unwrap();
 
@@ -326,7 +326,7 @@ for (token_id, holders) in holdings_map {
 
     if let Some(token_details) = all_tokens.iter().find(|x| x.id == token_id) {
         token_vec.push(TokenDetails {
-            id: token_id,
+            id: token_id.to_string(),
             created_at: token_details.created_at,
             updated_at: token_details.updated_at,
             name: token_details.name.clone(),
@@ -348,13 +348,13 @@ for (token_id, holders) in holdings_map {
     println!("Token: {token_id}, Top 10: {funds_percent_by_top_10:.2}%, Creator: {creator_percent:.2}%, Holders: {holder_count}");
 }
 
-    let b_ids: HashSet<Uuid> = token_vec.iter().map(|t| t.id).collect();
+    let b_ids: HashSet<String> = token_vec.iter().map(|t| t.id.to_string()).collect();
 
-    let not_included: Vec<Token> = all_tokens.iter().cloned().filter(|t| !b_ids.contains(&t.id)).collect();
+    let not_included: Vec<Token> = all_tokens.iter().cloned().filter(|t| !b_ids.contains(&t.id.to_string())).collect();
 
     for t in not_included {
         token_vec.push(TokenDetails {
-            id: t.id,
+            id: t.id.to_string(),
             created_at: t.created_at,
             updated_at: t.updated_at,
             name: t.name.clone(),
