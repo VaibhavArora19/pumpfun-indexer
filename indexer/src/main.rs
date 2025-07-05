@@ -14,7 +14,7 @@ use actix_web::{get, web, App, HttpResponse, HttpServer};
 use carbon_core::pipeline::Pipeline;
 use carbon_pumpfun_decoder::{PumpfunDecoder};
 use dotenv::dotenv;
-use redis::{AsyncCommands, Commands};
+use redis::{AsyncCommands};
 use sqlx::PgPool;
 use tokio::{sync::RwLock, time};
 

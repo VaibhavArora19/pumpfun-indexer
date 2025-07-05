@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     config::IndexerConfig,
-    helpers::{get_creator_holding_balance, get_total_supply, TradeInfo},
+    helpers::{get_creator_holding_balance, TradeInfo},
     types::BondStatus,
     BondingMcStateMap,
 };
