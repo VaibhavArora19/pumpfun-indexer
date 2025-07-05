@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     config::IndexerConfig,
     db::{
-        get_bonding_curve_and_mc_info, store_trades, update_bonding_curve_and_market_cap, BondingCurveAndMcInfo
+        fetch_token_data, get_bonding_curve_and_mc_info, store_trades, update_bonding_curve_and_market_cap, BondingCurveAndMcInfo
     },
     helpers::get_latest_sol_price,
     pumpfun_processor::PumpfunInstructionProcessor,
@@ -110,7 +110,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         }
-
     });
 
     let instruction_processor = PumpfunInstructionProcessor {

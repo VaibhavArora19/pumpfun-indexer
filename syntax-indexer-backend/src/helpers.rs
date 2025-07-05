@@ -14,6 +14,7 @@ use solana_pubkey::Pubkey;
 use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use spl_associated_token_account_client::address::get_associated_token_address;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 use crate::{config::IndexerConfig, utils::get_connection};
 
@@ -28,7 +29,14 @@ pub struct TradeInfo {
     pub token_amount: u64,
     pub is_buy: bool,
     pub user: String,
-    pub mint: String
+    pub mint: String,
+}
+
+#[derive(Debug)]
+struct Holding {
+    token_id: Uuid,
+    user: String,
+    net_tokens: i64,
 }
 
 pub type CoinPriceResponse = HashMap<String, CoinPriceData>;
@@ -47,19 +55,15 @@ pub async fn get_creator_holding_percentage(
 
     let ata = get_associated_token_address(&wallet_address, &mint);
 
-    let balance = match rpc_client
-        .get_token_account_balance(&ata)
-        .await {
-            Ok(bal) => bal,
-            Err(_) => {
-                UiTokenAmount {
-                    ui_amount: Some(0.0),
-                    decimals: 6,
-                    amount: "0".to_string(),
-                    ui_amount_string: "0".to_string()
-                }
-            },
-        };
+    let balance = match rpc_client.get_token_account_balance(&ata).await {
+        Ok(bal) => bal,
+        Err(_) => UiTokenAmount {
+            ui_amount: Some(0.0),
+            decimals: 6,
+            amount: "0".to_string(),
+            ui_amount_string: "0".to_string(),
+        },
+    };
 
     let holding_percentage = (balance.amount.parse::<f64>().unwrap()
         / total_supply.amount.parse::<f64>().unwrap())
@@ -151,7 +155,7 @@ pub async fn store_in_redis(redis: &mut MultiplexedConnection, data: TradeEvent)
         token_amount: data.token_amount,
         is_buy: data.is_buy,
         user: data.user.to_string(),
-        mint: data.mint.to_string()
+        mint: data.mint.to_string(),
     };
 
     let trade_details = serde_json::to_string(&trade_info).unwrap();
