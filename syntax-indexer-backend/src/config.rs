@@ -7,7 +7,7 @@ pub struct IndexerConfig {
     pub api_key: String,
     pub database_url: String,
     pub redis_url: String,
-    pub coingecko_api: String
+    pub coingecko_api: String,
 }
 
 #[derive(Debug, Error)]
@@ -19,7 +19,7 @@ pub enum ConfigError {
     #[error("Error: Invalid Redis URL")]
     InvalidRedisURL,
     #[error("Error: Invalid Coingecko API")]
-    InvalidCoingeckoAPI
+    InvalidCoingeckoAPI,
 }
 
 impl IndexerConfig {
@@ -33,13 +33,14 @@ impl IndexerConfig {
         let redis_url =
             env::var("REDIS_URL").unwrap_or_else(|_| ConfigError::InvalidRedisURL.to_string());
 
-        let coingecko_api = env::var("COINGECKO_API").unwrap_or_else(|_| ConfigError::InvalidCoingeckoAPI.to_string());
+        let coingecko_api = env::var("COINGECKO_API")
+            .unwrap_or_else(|_| ConfigError::InvalidCoingeckoAPI.to_string());
 
         Self {
             api_key,
             database_url,
             redis_url,
-            coingecko_api
+            coingecko_api,
         }
     }
 }

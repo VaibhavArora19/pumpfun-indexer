@@ -13,4 +13,4 @@ CREATE TABLE IF NOT EXISTS token (
     fund_percentage_by_top_10 int,
     creator_holding_percentage int,
     uri text
-);
+)

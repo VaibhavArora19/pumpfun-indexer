@@ -1,17 +1,21 @@
-use std::{collections::HashMap, sync::{Arc, RwLock}};
+use std::sync::Arc;
 
-use carbon_pumpfun_decoder::instructions::create_event::CreateEvent;
+use carbon_pumpfun_decoder::instructions::{create_event::CreateEvent, trade_event::TradeEvent};
+use redis::{aio::MultiplexedConnection, AsyncCommands};
 use solana_pubkey::Pubkey;
 use sqlx::{postgres::PgArguments, query_with, types::chrono::Utc, Arguments, PgPool};
 
-use crate::{config::IndexerConfig, helpers::get_creator_holding_percentage, types::BondStatus, BondingMcStateMap};
+use crate::{
+    config::IndexerConfig, helpers::get_creator_holding_percentage, types::BondStatus,
+    BondingMcStateMap,
+};
 
 #[derive(sqlx::FromRow, Debug, Clone)]
 pub struct BondingCurveAndMcInfo {
     pub contract_address: String,
     pub bonding_curve_address: String,
     pub bonding_curve_percentage: i32,
-    pub market_cap: Option<i64>
+    pub market_cap: Option<i64>,
 }
 
 pub async fn create_token(db: Arc<PgPool>, config: &IndexerConfig, create_event: CreateEvent) {
@@ -76,8 +80,7 @@ pub async fn change_status(bond_status: BondStatus, mint: Pubkey, db: Arc<PgPool
 pub async fn get_bonding_curve_and_mc_info(
     db: Arc<PgPool>,
 ) -> Result<Vec<BondingCurveAndMcInfo>, anyhow::Error> {
-    let query =
-        r#"SELECT contract_address, bonding_curve_address, bonding_curve_percentage, market_cap FROM token"#;
+    let query = r#"SELECT contract_address, bonding_curve_address, bonding_curve_percentage, market_cap FROM token"#;
 
     let bonding_curve_info = match sqlx::query_as::<_, BondingCurveAndMcInfo>(query)
         .fetch_all(&*db)
@@ -95,7 +98,6 @@ pub async fn get_bonding_curve_and_mc_info(
     return Ok(bonding_curve_info);
 }
 
-
 pub async fn update_bonding_curve_and_market_cap(db: Arc<PgPool>, updates: BondingMcStateMap) {
     log::info!("Entered into sql function");
     let mut sql = String::from("UPDATE token AS t SET market_cap = u.market_cap, bonding_curve_percentage = u.bonding_curve_percentage FROM (VALUES");
@@ -104,12 +106,16 @@ pub async fn update_bonding_curve_and_market_cap(db: Arc<PgPool>, updates: Bondi
         let reference = updates.read().await.clone();
         reference
     };
-    
-    //clear the map after flushing into DB to avoid memory issues
-    {
-        let mut clean_map = updates.write().await;
-        clean_map.clear();
+
+    if updates_ref.len() == 0 {
+        return;
     }
+
+    //clear the map after flushing into DB to avoid memory issues
+    // {
+    //     let mut clean_map = updates.write().await;
+    //     clean_map.clear();
+    // }
 
     let mut args = PgArguments::default();
 
@@ -134,6 +140,55 @@ pub async fn update_bonding_curve_and_market_cap(db: Arc<PgPool>, updates: Bondi
     };
 
     log::info!("Update data with updates: {:#?}", updates);
+}
 
-    
+pub async fn store_trades(redis: &mut MultiplexedConnection, db: Arc<PgPool>) {
+    let keys: Vec<String> = redis::cmd("KEYS")
+        .arg("*")
+        .query_async(redis)
+        .await
+        .unwrap();
+
+    if keys.len() == 0 {
+        return;
+    }
+
+    let values: Vec<String> = redis::cmd("MGET")
+        .arg(keys.clone())
+        .query_async(redis)
+        .await
+        .unwrap();
+
+    //flush redis here
+    let _: () = redis.flushall().await.unwrap();
+
+    let mut parsed_info = Vec::new();
+
+    for item in values.into_iter() {
+        let parsed: TradeEvent = serde_json::from_str(&item).unwrap();
+
+        parsed_info.push(parsed);
+    }
+
+    for trade in parsed_info {
+        let id = uuid::Uuid::new_v4();
+
+        let query = r#"
+        INSERT INTO trade (id, sol_amount, token_amount, is_buy, user_address, token_id)
+        SELECT $1, $2, $3, $4, $5, id FROM token WHERE contract_address = $6
+        "#;
+
+        if let Err(err) = sqlx::query(query)
+            .bind(id)
+            .bind(trade.sol_amount as i64)
+            .bind(trade.token_amount as i64)
+            .bind(trade.is_buy)
+            .bind(trade.user.to_string())
+            .bind(trade.mint.to_string())
+            .execute(&*db)
+            .await
+        {
+            eprintln!("Failed to store trades. Failed with err: {:#?}", err);
+        };
+    }
 }

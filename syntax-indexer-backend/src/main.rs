@@ -1,15 +1,17 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    config::IndexerConfig, db::{get_bonding_curve_and_mc_info, update_bonding_curve_and_market_cap, BondingCurveAndMcInfo}, helpers::get_latest_sol_price, pumpfun_processor::PumpfunInstructionProcessor, utils::connect_db
+    config::IndexerConfig,
+    db::{
+        get_bonding_curve_and_mc_info, store_trades, update_bonding_curve_and_market_cap, BondingCurveAndMcInfo
+    },
+    helpers::get_latest_sol_price,
+    pumpfun_processor::PumpfunInstructionProcessor,
+    utils::connect_db,
 };
 use carbon_core::pipeline::Pipeline;
 use carbon_pumpfun_decoder::PumpfunDecoder;
 use dotenv::dotenv;
-use redis::AsyncCommands;
 use tokio::{sync::RwLock, time};
 
 mod config;
@@ -22,7 +24,6 @@ mod utils;
 
 pub type BondingMcStateMap = Arc<RwLock<HashMap<String, BondingCurveAndMcInfo>>>;
 
-//first thing tommorow is to sort the bonding curve i.e. get data from bonding curve account and check how much bonded and how much not
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
@@ -40,7 +41,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let redis_client = redis::Client::open(config.redis_url.clone()).unwrap();
 
-    let redis = Arc::new(redis_client.get_connection().unwrap());
+    let connection = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .unwrap();
 
     let bonding_curve_and_mc_info = get_bonding_curve_and_mc_info(db.clone()).await.unwrap();
 
@@ -59,31 +63,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     contract_address: item.contract_address,
                     bonding_curve_address: item.bonding_curve_address,
                     bonding_curve_percentage: item.bonding_curve_percentage,
-                    market_cap: item.market_cap
+                    market_cap: item.market_cap,
                 },
             );
         }
     }
 
-    let sol_price  = Arc::new(RwLock::new(0.0));
+    let sol_price = Arc::new(RwLock::new(0.0));
 
     let sol_price_clone = sol_price.clone();
 
     tokio::spawn(async move {
         loop {
-         let price =  get_latest_sol_price().await.unwrap();
+            let price = get_latest_sol_price().await.unwrap();
 
-         println!("price is: {:?}", price);
+            println!("price is: {:?}", price);
 
-          let mut price_ref = sol_price_clone.write().await;
+            let mut price_ref = sol_price_clone.write().await;
 
-          *price_ref = price;
+            *price_ref = price;
 
-          tokio::time::sleep(time::Duration::from_secs(15)).await;  
+            tokio::time::sleep(time::Duration::from_secs(15)).await;
         }
     });
 
-    
     let db_clone = db.clone();
     let info_map = bonding_curve_and_mc_info_map.clone();
 
@@ -91,14 +94,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             let db_clone = db_clone.clone();
             let info_map = info_map.clone();
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             update_bonding_curve_and_market_cap(db_clone, info_map).await;
         }
     });
 
-    // create_token(db.clone(), CreateEvent { name: "hello".to_string(), symbol: "helllo".to_string(), uri: "https".to_string(), mint: Pubkey::from_str("B1Ni4dMNFvRXXV6qCtC98vSYNy6fKidsUtQrs5mqpump").unwrap(), bonding_curve: Pubkey::from_str("FdGc4Ns4dKbFv8ADKgS66tWR8CyxPJbtJcJHheNM3C8N").unwrap(), user: Pubkey::from_str("3BJ6qHbt6U7EnUAFP2cwP8ydz5iiGfReRvGnnB3uygfd").unwrap(), creator: Pubkey::from_str("3BJ6qHbt6U7EnUAFP2cwP8ydz5iiGfReRvGnnB3uygfd").unwrap(), timestamp: 1751536646 }).await;
+    let db_clone_2 = db.clone();
+    let connection_clone = connection.clone();
 
-    let instruction_processor = PumpfunInstructionProcessor { db, config, redis, bonding_state_map: bonding_curve_and_mc_info_map, sol_price: sol_price };
+    //flush redis data into DB
+    tokio::spawn(async move {
+        loop {
+            store_trades(&mut connection_clone.clone(), db_clone_2.clone()).await;
+
+            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+        }
+
+    });
+
+    let instruction_processor = PumpfunInstructionProcessor {
+        db,
+        config,
+        redis: connection,
+        bonding_state_map: bonding_curve_and_mc_info_map,
+        sol_price: sol_price,
+    };
 
     Pipeline::builder()
         .datasource(helius_websocket::get_helius_websocket())
