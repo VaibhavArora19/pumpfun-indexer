@@ -5,10 +5,10 @@ use carbon_pumpfun_decoder::instructions::trade_event::TradeEvent;
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use serde::{Deserialize, Serialize};
 use solana_account_decoder::parse_token::UiTokenAmount;
-use solana_client::client_error::reqwest::{
+use solana_client::{client_error::reqwest::{
     self,
     header::{HeaderMap, HeaderValue, CONTENT_TYPE},
-};
+}, nonblocking::rpc_client};
 use solana_pubkey::Pubkey;
 use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use spl_associated_token_account_client::address::get_associated_token_address;
@@ -40,17 +40,25 @@ struct Holding {
 
 pub type CoinPriceResponse = HashMap<String, CoinPriceData>;
 
-pub async fn get_creator_holding_percentage(
-    wallet_address: Pubkey,
-    mint: Pubkey,
-    config: &IndexerConfig,
-) -> f64 {
+pub async fn get_total_supply(mint: Pubkey, config: &IndexerConfig) -> f64 {
     let rpc_client = get_connection(config);
 
     let total_supply = rpc_client
         .get_token_supply(&mint)
         .await
         .expect("Failed to fetch total supply of the token");
+
+    total_supply.amount.parse::<f64>().unwrap()
+}
+
+pub async fn get_creator_holding_balance(
+    wallet_address: Pubkey,
+    mint: Pubkey,
+    config: &IndexerConfig,
+) -> f64 {
+    let rpc_client = get_connection(config);
+
+
 
     let ata = get_associated_token_address(&wallet_address, &mint);
 
@@ -64,11 +72,12 @@ pub async fn get_creator_holding_percentage(
         },
     };
 
-    let holding_percentage = (balance.amount.parse::<f64>().unwrap()
-        / total_supply.amount.parse::<f64>().unwrap())
-        * 100.0;
+    // let holding_percentage = (balance.amount.parse::<f64>().unwrap()
+    //     / total_supply.amount.parse::<f64>().unwrap())
+    //     * 100.0;
 
-    return holding_percentage;
+    balance.amount.parse::<f64>().unwrap()
+    // return holding_percentage;
 }
 
 pub fn get_bonding_curve_progress(

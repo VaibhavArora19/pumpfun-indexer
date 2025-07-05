@@ -11,6 +11,6 @@ CREATE TABLE IF NOT EXISTS token (
     market_cap bigint,
     holder_count int,
     fund_percentage_by_top_10 int,
-    creator_holding_percentage int,
+    creator_holding_percentage bigint,
     uri text
 )

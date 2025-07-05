@@ -14,7 +14,7 @@ use actix_web::{get, web, App, HttpResponse, HttpServer};
 use carbon_core::pipeline::Pipeline;
 use carbon_pumpfun_decoder::{PumpfunDecoder};
 use dotenv::dotenv;
-use redis::AsyncCommands;
+use redis::{AsyncCommands, Commands};
 use sqlx::PgPool;
 use tokio::{sync::RwLock, time};
 
@@ -61,6 +61,8 @@ async fn main() -> std::io::Result<()> {
         .await
         .unwrap();
 
+    let _: () = connection.flushall().await.unwrap();
+    
     let bonding_curve_and_mc_info = get_bonding_curve_and_mc_info(db.clone()).await.unwrap();
 
     println!("bonding curve info: {:#?}", bonding_curve_and_mc_info);

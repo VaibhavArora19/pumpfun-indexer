@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     config::IndexerConfig,
-    helpers::{get_creator_holding_percentage, TradeInfo},
+    helpers::{get_creator_holding_balance, get_total_supply, TradeInfo},
     types::BondStatus,
     BondingMcStateMap,
 };
@@ -50,7 +50,8 @@ pub struct Token {
     market_cap: Option<i64>,
     uri: String,
     bonding_curve_address: String,
-    creator_address: String
+    creator_address: String,
+    creator_holding_percentage: i64
 }
 #[allow(dead_code)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -88,7 +89,7 @@ pub async fn create_token(db: Arc<PgPool>, config: &IndexerConfig, create_event:
     let current_time = Utc::now();
 
     let holding_percentage =
-        get_creator_holding_percentage(create_event.creator, create_event.mint, config).await;
+        get_creator_holding_balance(create_event.creator, create_event.mint, config).await;
 
     let insert_sql = r#"
     INSERT INTO token(
@@ -244,7 +245,7 @@ pub async fn store_trades(redis: &mut MultiplexedConnection, db: Arc<PgPool>) {
 
         let query = r#"
         INSERT INTO trade (id, sol_amount, token_amount, is_buy, user_address, created_at, updated_at, token_id)
-        SELECT $1, $2, $3, $4, $5, $6, $7 id FROM token WHERE contract_address = $8
+        SELECT $1, $2, $3, $4, $5, $6, $7, id FROM token WHERE contract_address = $8
         "#;
 
         if let Err(err) = sqlx::query(query)
@@ -298,40 +299,56 @@ for trade in all_trades {
     }
 }
 
+println!("holding map: {:#?}", holdings_map);
+
 let mut token_vec = Vec::new();
 
 
 // Then calculate per token:
 for (token_id, holders) in holdings_map {
-    let total_supply: i64 = holders.iter().map(|h| h.net_tokens).sum();
+    // let total_supply: i64 = holders.iter().map(|h| h.net_tokens).sum();
+    let total_supply =1000000000;
+
     let mut sorted = holders.clone();
+    println!("sorted: {:#?}", sorted);
     sorted.sort_by(|a, b| b.net_tokens.cmp(&a.net_tokens));
 
     let top_10_total: i64 = sorted.iter().take(10).map(|h| h.net_tokens).sum();
 
-    let holder_count = holders.len();
+    let holder_count = holders.iter().cloned().filter(|x| x.net_tokens > 0).count();
 
+    log::info!("holders: {:?}", holders);
 
-    let creator_balance = holders
+    let mut creator_balance = holders
         .iter()
         .find(|h| h.user == token_map.get(&token_id).unwrap().creator_address)
         .map(|h| h.net_tokens)
         .unwrap_or(0);
 
-    let funds_percent_by_top_10 = if total_supply > 0 {
-        (top_10_total as f64 / total_supply as f64) * 100.0
+    let mut funds_percent_by_top_10 = if total_supply > 0 {
+        (((top_10_total as f64 / 10f64.powi(6)) as f64 / total_supply as f64) * 100.0)
     } else {
         0.0
     };
 
+    log::info!("token id: {} and funds_percent_top_10: {}", token_id, funds_percent_by_top_10);
+
+    if funds_percent_by_top_10 < 0.0 {
+        funds_percent_by_top_10 = 0.0
+    }
+
+    let initial_creator_balance = all_tokens.iter().cloned().find(|x| x.id == token_id).unwrap();
+
     let creator_percent = if total_supply > 0 {
-        (creator_balance as f64 / total_supply as f64) * 100.0
+        ((((initial_creator_balance.creator_holding_percentage as f64) + creator_balance as f64) /  10f64.powi(6)) / total_supply as f64) * 100.0
     } else {
         0.0
     };
 
     if let Some(token_details) = all_tokens.iter().find(|x| x.id == token_id) {
         let volume = volume.get(&token_id).cloned();
+
+        let market_cap = token_details.market_cap.unwrap_or_else(|| 0);
 
         token_vec.push(TokenDetails {
             id: token_id.to_string(),
@@ -341,14 +358,14 @@ for (token_id, holders) in holdings_map {
             ticker: token_details.ticker.clone(),
             contract_address: token_details.contract_address.clone(),
             bonding_curve_percentage: token_details.bonding_curve_percentage,
-            bond_status: token_details.bond_status.clone(),
+            bond_status: if market_cap > 25000 && market_cap < 62500 { "Graduating".to_string() } else if market_cap < 25000 { "Newly launched".to_string()} else { "Graduated".to_string() },
             volume,
             market_cap: token_details.market_cap,
             uri: token_details.uri.clone(),
             bonding_curve_address: token_details.bonding_curve_address.clone(),
             creator_address: token_details.creator_address.clone(),
             funds_percent_by_top_10,
-            holder_count,
+            holder_count: if creator_percent > 0.0 { holder_count + 1 } else { holder_count },
             creator_percent
         });
     }
