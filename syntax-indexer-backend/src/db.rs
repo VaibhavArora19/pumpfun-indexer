@@ -270,9 +270,14 @@ let all_tokens = sqlx::query_as::<_, Token>(r#"SELECT * FROM token"#).fetch_all(
 
 let token_map: HashMap<uuid::Uuid,Token > = all_tokens.iter().cloned().map(|t| (t.id, t)).collect();
 
+let mut volume: HashMap<Uuid, i64> = HashMap::new();
+
 let mut holdings_map: HashMap<Uuid, Vec<Holding>> = HashMap::new();
 
 for trade in all_trades {
+
+    volume.entry(trade.token_id).and_modify(|x| *x += trade.sol_amount).or_insert(trade.sol_amount);
+
     let entry = holdings_map.entry(trade.token_id).or_default();
     if let Some(user_holding) = entry.iter_mut().find(|h| h.user == trade.user_address) {
         if trade.is_buy {
@@ -306,6 +311,7 @@ for (token_id, holders) in holdings_map {
 
     let holder_count = holders.len();
 
+
     let creator_balance = holders
         .iter()
         .find(|h| h.user == token_map.get(&token_id).unwrap().creator_address)
@@ -325,6 +331,8 @@ for (token_id, holders) in holdings_map {
     };
 
     if let Some(token_details) = all_tokens.iter().find(|x| x.id == token_id) {
+        let volume = volume.get(&token_id).cloned();
+
         token_vec.push(TokenDetails {
             id: token_id.to_string(),
             created_at: token_details.created_at,
@@ -334,7 +342,7 @@ for (token_id, holders) in holdings_map {
             contract_address: token_details.contract_address.clone(),
             bonding_curve_percentage: token_details.bonding_curve_percentage,
             bond_status: token_details.bond_status.clone(),
-            volume: token_details.volume,
+            volume,
             market_cap: token_details.market_cap,
             uri: token_details.uri.clone(),
             bonding_curve_address: token_details.bonding_curve_address.clone(),
@@ -362,7 +370,7 @@ for (token_id, holders) in holdings_map {
             contract_address: t.contract_address.clone(),
             bonding_curve_percentage: t.bonding_curve_percentage,
             bond_status: t.bond_status.clone(),
-            volume: t.volume,
+            volume: Some(0),
             market_cap: t.market_cap,
             uri: t.uri.clone(),
             bonding_curve_address: t.bonding_curve_address.clone(),
