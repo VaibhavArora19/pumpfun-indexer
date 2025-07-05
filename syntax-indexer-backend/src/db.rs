@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use carbon_pumpfun_decoder::instructions::{create_event::CreateEvent, trade_event::TradeEvent};
 use redis::{aio::MultiplexedConnection, AsyncCommands};
+use serde::de::value;
 use solana_pubkey::Pubkey;
 use sqlx::{postgres::PgArguments, query_with, types::chrono::Utc, Arguments, PgPool};
 
 use crate::{
-    config::IndexerConfig, helpers::get_creator_holding_percentage, types::BondStatus,
+    config::IndexerConfig, helpers::{get_creator_holding_percentage, TradeInfo}, types::BondStatus,
     BondingMcStateMap,
 };
 
@@ -159,13 +160,16 @@ pub async fn store_trades(redis: &mut MultiplexedConnection, db: Arc<PgPool>) {
         .await
         .unwrap();
 
+    log::info!("keys are: {:?}", keys);
+    log::info!("values are {:?}", values);
+
     //flush redis here
     let _: () = redis.flushall().await.unwrap();
 
     let mut parsed_info = Vec::new();
 
     for item in values.into_iter() {
-        let parsed: TradeEvent = serde_json::from_str(&item).unwrap();
+        let parsed: TradeInfo = serde_json::from_str(&item).unwrap();
 
         parsed_info.push(parsed);
     }

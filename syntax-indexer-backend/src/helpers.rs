@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Error;
 use carbon_pumpfun_decoder::instructions::trade_event::TradeEvent;
+use log::info;
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use serde::{Deserialize, Serialize};
 use solana_account_decoder::parse_token::UiTokenAmount;
@@ -23,10 +24,11 @@ pub struct CoinPriceData {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TradeInfo {
-    sol_amount: u64,
-    token_amount: u64,
-    is_buy: bool,
-    user: String,
+    pub sol_amount: u64,
+    pub token_amount: u64,
+    pub is_buy: bool,
+    pub user: String,
+    pub mint: String
 }
 
 pub type CoinPriceResponse = HashMap<String, CoinPriceData>;
@@ -142,17 +144,25 @@ pub async fn get_latest_sol_price() -> Result<f64, Error> {
 }
 
 pub async fn store_in_redis(redis: &mut MultiplexedConnection, data: TradeEvent) {
+    log::info!("Entering data into redis");
+
     let trade_info = TradeInfo {
         sol_amount: data.sol_amount,
         token_amount: data.token_amount,
         is_buy: data.is_buy,
         user: data.user.to_string(),
+        mint: data.mint.to_string()
     };
 
     let trade_details = serde_json::to_string(&trade_info).unwrap();
+
+    log::info!("mint address: {}", data.mint.to_string());
+    log::info!("trade details: {:?}", trade_details);
 
     let _: () = redis
         .set(data.mint.to_string(), trade_details)
         .await
         .unwrap();
+
+    log::info!("stored in redis");
 }

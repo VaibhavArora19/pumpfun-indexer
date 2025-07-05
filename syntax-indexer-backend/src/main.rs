@@ -10,8 +10,9 @@ use crate::{
     utils::connect_db,
 };
 use carbon_core::pipeline::Pipeline;
-use carbon_pumpfun_decoder::PumpfunDecoder;
+use carbon_pumpfun_decoder::{instructions::trade_event::TradeEvent, PumpfunDecoder};
 use dotenv::dotenv;
+use redis::AsyncCommands;
 use tokio::{sync::RwLock, time};
 
 mod config;
@@ -41,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let redis_client = redis::Client::open(config.redis_url.clone()).unwrap();
 
-    let connection = redis_client
+    let mut connection = redis_client
         .get_multiplexed_async_connection()
         .await
         .unwrap();
