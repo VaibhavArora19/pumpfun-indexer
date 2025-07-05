@@ -15,7 +15,7 @@ publish = false
 
 [workspace]
 resolver = "2"
-members = ["db","syntax-indexer-backend"]
+members = ["db","indexer"]
 
 [workspace.dependencies]
 carbon-core = "0.8"

@@ -2526,6 +2526,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8a5a9a0ff0086c7a148acb942baaabeadf9504d10400b5a05645853729b9cd2"
 
 [[package]]
+name = "indexer"
+version = "0.1.0"
+dependencies = [
+ "actix-cors",
+ "actix-web",
+ "anyhow",
+ "async-trait",
+ "carbon-core",
+ "carbon-helius-atlas-ws-datasource",
+ "carbon-pump-swap-decoder",
+ "carbon-pumpfun-decoder",
+ "carbon-rpc-block-subscribe-datasource",
+ "carbon-rpc-program-subscribe-datasource",
+ "dotenv",
+ "env_logger 0.11.8",
+ "helius",
+ "log",
+ "redis",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "solana-account-decoder",
+ "solana-client",
+ "solana-instruction",
+ "solana-pubkey",
+ "solana-sdk",
+ "solana-transaction-status",
+ "spl-associated-token-account-client",
+ "sqlx",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7321,42 +7357,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.104",
-]
-
-[[package]]
-name = "syntax-indexer-backend"
-version = "0.1.0"
-dependencies = [
- "actix-cors",
- "actix-web",
- "anyhow",
- "async-trait",
- "carbon-core",
- "carbon-helius-atlas-ws-datasource",
- "carbon-pump-swap-decoder",
- "carbon-pumpfun-decoder",
- "carbon-rpc-block-subscribe-datasource",
- "carbon-rpc-program-subscribe-datasource",
- "dotenv",
- "env_logger 0.11.8",
- "helius",
- "log",
- "redis",
- "reqwest",
- "serde",
- "serde_json",
- "solana-account-decoder",
- "solana-client",
- "solana-instruction",
- "solana-pubkey",
- "solana-sdk",
- "solana-transaction-status",
- "spl-associated-token-account-client",
- "sqlx",
- "thiserror 2.0.12",
- "tokio",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
