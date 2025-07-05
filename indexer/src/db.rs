@@ -1,11 +1,18 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
-use carbon_pumpfun_decoder::instructions::{create_event::CreateEvent};
+use carbon_pumpfun_decoder::instructions::create_event::CreateEvent;
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use serde::{Deserialize, Serialize};
 use solana_pubkey::Pubkey;
 use sqlx::{
-    postgres::PgArguments, prelude::FromRow, query_with, types::chrono::{DateTime, Utc}, Arguments, PgPool, Pool, Postgres,
+    postgres::PgArguments,
+    prelude::FromRow,
+    query_with,
+    types::chrono::{DateTime, Utc},
+    Arguments, PgPool, Pool, Postgres,
 };
 use uuid::Uuid;
 
@@ -32,7 +39,7 @@ pub struct Trade {
     token_amount: i64,
     is_buy: bool,
     user_address: String,
-    token_id: uuid::Uuid
+    token_id: uuid::Uuid,
 }
 
 #[allow(dead_code)]
@@ -51,7 +58,7 @@ pub struct Token {
     uri: String,
     bonding_curve_address: String,
     creator_address: String,
-    creator_holding_percentage: i64
+    creator_holding_percentage: i64,
 }
 #[allow(dead_code)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -71,8 +78,7 @@ pub struct TokenDetails {
     creator_address: String,
     funds_percent_by_top_10: f64,
     holder_count: usize,
-    creator_percent: f64
-
+    creator_percent: f64,
 }
 
 #[allow(dead_code)]
@@ -82,7 +88,6 @@ struct Holding {
     user: String,
     net_tokens: i64,
 }
-
 
 pub async fn create_token(db: Arc<PgPool>, config: &IndexerConfig, create_event: CreateEvent) {
     let id = uuid::Uuid::new_v4();
@@ -266,116 +271,150 @@ pub async fn store_trades(redis: &mut MultiplexedConnection, db: Arc<PgPool>) {
 }
 
 pub async fn fetch_token_data(db: &Pool<Postgres>) -> Vec<TokenDetails> {
-let all_trades = sqlx::query_as::<_, Trade>(r#"SELECT * FROM trade"#).fetch_all(&*db).await.unwrap();
-let all_tokens = sqlx::query_as::<_, Token>(r#"SELECT * FROM token"#).fetch_all(&*db).await.unwrap();
+    let all_trades = sqlx::query_as::<_, Trade>(r#"SELECT * FROM trade"#)
+        .fetch_all(&*db)
+        .await
+        .unwrap();
+    let all_tokens = sqlx::query_as::<_, Token>(r#"SELECT * FROM token"#)
+        .fetch_all(&*db)
+        .await
+        .unwrap();
 
-let token_map: HashMap<uuid::Uuid,Token > = all_tokens.iter().cloned().map(|t| (t.id, t)).collect();
+    let token_map: HashMap<uuid::Uuid, Token> =
+        all_tokens.iter().cloned().map(|t| (t.id, t)).collect();
 
-let mut volume: HashMap<Uuid, i64> = HashMap::new();
+    let mut volume: HashMap<Uuid, i64> = HashMap::new();
 
-let mut holdings_map: HashMap<Uuid, Vec<Holding>> = HashMap::new();
+    let mut holdings_map: HashMap<Uuid, Vec<Holding>> = HashMap::new();
 
-for trade in all_trades {
+    for trade in all_trades {
+        volume
+            .entry(trade.token_id)
+            .and_modify(|x| *x += trade.sol_amount)
+            .or_insert(trade.sol_amount);
 
-    volume.entry(trade.token_id).and_modify(|x| *x += trade.sol_amount).or_insert(trade.sol_amount);
-
-    let entry = holdings_map.entry(trade.token_id).or_default();
-    if let Some(user_holding) = entry.iter_mut().find(|h| h.user == trade.user_address) {
-        if trade.is_buy {
-            user_holding.net_tokens += trade.token_amount as i64;
-        } else {
-            user_holding.net_tokens -= trade.token_amount as i64;
-        }
-    } else {
-        entry.push(Holding {
-            token_id: trade.token_id,
-            user: trade.user_address.clone(),
-            net_tokens: if trade.is_buy {
-                trade.token_amount as i64
+        let entry = holdings_map.entry(trade.token_id).or_default();
+        if let Some(user_holding) = entry.iter_mut().find(|h| h.user == trade.user_address) {
+            if trade.is_buy {
+                user_holding.net_tokens += trade.token_amount as i64;
             } else {
-                -(trade.token_amount as i64)
-            },
-        });
-    }
-}
-
-println!("holding map: {:#?}", holdings_map);
-
-let mut token_vec = Vec::new();
-
-
-// Then calculate per token:
-for (token_id, holders) in holdings_map {
-    // let total_supply: i64 = holders.iter().map(|h| h.net_tokens).sum();
-    let total_supply =1000000000;
-
-    let mut sorted = holders.clone();
-    println!("sorted: {:#?}", sorted);
-    sorted.sort_by(|a, b| b.net_tokens.cmp(&a.net_tokens));
-
-    let top_10_total: i64 = sorted.iter().take(10).map(|h| h.net_tokens).sum();
-
-    let holder_count = holders.iter().cloned().filter(|x| x.net_tokens > 0).count();
-
-    log::info!("holders: {:?}", holders);
-
-    let mut creator_balance = holders
-        .iter()
-        .find(|h| h.user == token_map.get(&token_id).unwrap().creator_address)
-        .map(|h| h.net_tokens)
-        .unwrap_or(0);
-
-    let mut funds_percent_by_top_10 = if total_supply > 0 {
-        (((top_10_total as f64 / 10f64.powi(6)) as f64 / total_supply as f64) * 100.0)
-    } else {
-        0.0
-    };
-
-    log::info!("token id: {} and funds_percent_top_10: {}", token_id, funds_percent_by_top_10);
-
-    if funds_percent_by_top_10 < 0.0 {
-        funds_percent_by_top_10 = 0.0
+                user_holding.net_tokens -= trade.token_amount as i64;
+            }
+        } else {
+            entry.push(Holding {
+                token_id: trade.token_id,
+                user: trade.user_address.clone(),
+                net_tokens: if trade.is_buy {
+                    trade.token_amount as i64
+                } else {
+                    -(trade.token_amount as i64)
+                },
+            });
+        }
     }
 
-    let initial_creator_balance = all_tokens.iter().cloned().find(|x| x.id == token_id).unwrap();
+    println!("holding map: {:#?}", holdings_map);
 
-    let creator_percent = if total_supply > 0 {
-        ((((initial_creator_balance.creator_holding_percentage as f64) + creator_balance as f64) /  10f64.powi(6)) / total_supply as f64) * 100.0
-    } else {
-        0.0
-    };
+    let mut token_vec = Vec::new();
 
-    if let Some(token_details) = all_tokens.iter().find(|x| x.id == token_id) {
-        let volume = volume.get(&token_id).cloned();
+    // Then calculate per token:
+    for (token_id, holders) in holdings_map {
+        // let total_supply: i64 = holders.iter().map(|h| h.net_tokens).sum();
+        let total_supply = 1000000000;
 
-        let market_cap = token_details.market_cap.unwrap_or_else(|| 0);
+        let mut sorted = holders.clone();
+        println!("sorted: {:#?}", sorted);
+        sorted.sort_by(|a, b| b.net_tokens.cmp(&a.net_tokens));
 
-        token_vec.push(TokenDetails {
-            id: token_id.to_string(),
-            created_at: token_details.created_at,
-            updated_at: token_details.updated_at,
-            name: token_details.name.clone(),
-            ticker: token_details.ticker.clone(),
-            contract_address: token_details.contract_address.clone(),
-            bonding_curve_percentage: token_details.bonding_curve_percentage,
-            bond_status: if market_cap > 25000 && market_cap < 62500 { "Graduating".to_string() } else if market_cap < 25000 { "Newly launched".to_string()} else { "Graduated".to_string() },
-            volume,
-            market_cap: token_details.market_cap,
-            uri: token_details.uri.clone(),
-            bonding_curve_address: token_details.bonding_curve_address.clone(),
-            creator_address: token_details.creator_address.clone(),
-            funds_percent_by_top_10,
-            holder_count: if creator_percent > 0.0 { holder_count + 1 } else { holder_count },
-            creator_percent
-        });
+        let top_10_total: i64 = sorted.iter().take(10).map(|h| h.net_tokens).sum();
+
+        let holder_count = holders.iter().cloned().filter(|x| x.net_tokens > 0).count();
+
+        log::info!("holders: {:?}", holders);
+
+        let mut creator_balance = holders
+            .iter()
+            .find(|h| h.user == token_map.get(&token_id).unwrap().creator_address)
+            .map(|h| h.net_tokens)
+            .unwrap_or(0);
+
+        let mut funds_percent_by_top_10 = if total_supply > 0 {
+            (((top_10_total as f64 / 10f64.powi(6)) as f64 / total_supply as f64) * 100.0)
+        } else {
+            0.0
+        };
+
+        log::info!(
+            "token id: {} and funds_percent_top_10: {}",
+            token_id,
+            funds_percent_by_top_10
+        );
+
+        if funds_percent_by_top_10 < 0.0 {
+            funds_percent_by_top_10 = 0.0
+        }
+
+        let initial_creator_balance = all_tokens
+            .iter()
+            .cloned()
+            .find(|x| x.id == token_id)
+            .unwrap();
+
+        let creator_percent = if total_supply > 0 {
+            ((((initial_creator_balance.creator_holding_percentage as f64)
+                + creator_balance as f64)
+                / 10f64.powi(6))
+                / total_supply as f64)
+                * 100.0
+        } else {
+            0.0
+        };
+
+        if let Some(token_details) = all_tokens.iter().find(|x| x.id == token_id) {
+            let volume = volume.get(&token_id).cloned();
+
+            let market_cap = token_details.market_cap.unwrap_or_else(|| 0);
+
+            token_vec.push(TokenDetails {
+                id: token_id.to_string(),
+                created_at: token_details.created_at,
+                updated_at: token_details.updated_at,
+                name: token_details.name.clone(),
+                ticker: token_details.ticker.clone(),
+                contract_address: token_details.contract_address.clone(),
+                bonding_curve_percentage: token_details.bonding_curve_percentage,
+                bond_status: if market_cap > 25000 && market_cap < 62500 {
+                    "Graduating".to_string()
+                } else if market_cap < 25000 {
+                    "Newly launched".to_string()
+                } else {
+                    "Graduated".to_string()
+                },
+                volume,
+                market_cap: token_details.market_cap,
+                uri: token_details.uri.clone(),
+                bonding_curve_address: token_details.bonding_curve_address.clone(),
+                creator_address: token_details.creator_address.clone(),
+                funds_percent_by_top_10,
+                holder_count: if creator_percent > 0.0 {
+                    holder_count + 1
+                } else {
+                    holder_count
+                },
+                creator_percent,
+            });
+        }
+
+        println!("Token: {token_id}, Top 10: {funds_percent_by_top_10:.2}%, Creator: {creator_percent:.2}%, Holders: {holder_count}");
     }
-
-    println!("Token: {token_id}, Top 10: {funds_percent_by_top_10:.2}%, Creator: {creator_percent:.2}%, Holders: {holder_count}");
-}
 
     let b_ids: HashSet<String> = token_vec.iter().map(|t| t.id.to_string()).collect();
 
-    let not_included: Vec<Token> = all_tokens.iter().cloned().filter(|t| !b_ids.contains(&t.id.to_string())).collect();
+    let not_included: Vec<Token> = all_tokens
+        .iter()
+        .cloned()
+        .filter(|t| !b_ids.contains(&t.id.to_string()))
+        .collect();
 
     for t in not_included {
         token_vec.push(TokenDetails {
@@ -394,7 +433,7 @@ for (token_id, holders) in holdings_map {
             creator_address: t.creator_address.clone(),
             funds_percent_by_top_10: 0.0,
             holder_count: 0,
-            creator_percent: 0.0
+            creator_percent: 0.0,
         });
     }
 

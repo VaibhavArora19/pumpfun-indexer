@@ -6,9 +6,9 @@ use carbon_core::{
     processor::Processor,
 };
 use carbon_pumpfun_decoder::instructions::PumpfunInstruction;
-use redis::aio::{MultiplexedConnection};
+use redis::aio::MultiplexedConnection;
 use sqlx::PgPool;
-use tokio::sync::{RwLock};
+use tokio::sync::RwLock;
 
 use crate::{
     config::IndexerConfig,

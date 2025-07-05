@@ -5,10 +5,13 @@ use carbon_pumpfun_decoder::instructions::trade_event::TradeEvent;
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use serde::{Deserialize, Serialize};
 use solana_account_decoder::parse_token::UiTokenAmount;
-use solana_client::{client_error::reqwest::{
-    self,
-    header::{HeaderMap, HeaderValue, CONTENT_TYPE},
-}, nonblocking::rpc_client};
+use solana_client::{
+    client_error::reqwest::{
+        self,
+        header::{HeaderMap, HeaderValue, CONTENT_TYPE},
+    },
+    nonblocking::rpc_client,
+};
 use solana_pubkey::Pubkey;
 use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use spl_associated_token_account_client::address::get_associated_token_address;
@@ -57,8 +60,6 @@ pub async fn get_creator_holding_balance(
     config: &IndexerConfig,
 ) -> f64 {
     let rpc_client = get_connection(config);
-
-
 
     let ata = get_associated_token_address(&wallet_address, &mint);
 

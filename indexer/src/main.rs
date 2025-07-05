@@ -3,7 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     config::IndexerConfig,
     db::{
-        fetch_token_data, get_bonding_curve_and_mc_info, store_trades, update_bonding_curve_and_market_cap, BondingCurveAndMcInfo
+        fetch_token_data, get_bonding_curve_and_mc_info, store_trades,
+        update_bonding_curve_and_market_cap, BondingCurveAndMcInfo,
     },
     helpers::get_latest_sol_price,
     pumpfun_processor::PumpfunInstructionProcessor,
@@ -12,9 +13,9 @@ use crate::{
 use actix_cors::Cors;
 use actix_web::{get, web, App, HttpResponse, HttpServer};
 use carbon_core::pipeline::Pipeline;
-use carbon_pumpfun_decoder::{PumpfunDecoder};
+use carbon_pumpfun_decoder::PumpfunDecoder;
 use dotenv::dotenv;
-use redis::{AsyncCommands};
+use redis::AsyncCommands;
 use sqlx::PgPool;
 use tokio::{sync::RwLock, time};
 
@@ -29,14 +30,12 @@ mod utils;
 pub type BondingMcStateMap = Arc<RwLock<HashMap<String, BondingCurveAndMcInfo>>>;
 
 #[get("/tokens")]
-async fn get_tokens(db : web::Data<Arc<PgPool>>) -> HttpResponse {
-
+async fn get_tokens(db: web::Data<Arc<PgPool>>) -> HttpResponse {
     let conn = db.get_ref();
 
     let result = fetch_token_data(conn).await;
 
     HttpResponse::Ok().json(&result)
-
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -49,7 +48,8 @@ async fn main() -> std::io::Result<()> {
     let db = Arc::new(
         connect_db(&config.database_url)
             .await
-            .map_err(|_| anyhow::Error::msg("Failed to connect to DB")).unwrap(),
+            .map_err(|_| anyhow::Error::msg("Failed to connect to DB"))
+            .unwrap(),
     );
 
     log::info!("Database Connected");
@@ -62,7 +62,7 @@ async fn main() -> std::io::Result<()> {
         .unwrap();
 
     let _: () = connection.flushall().await.unwrap();
-    
+
     let bonding_curve_and_mc_info = get_bonding_curve_and_mc_info(db.clone()).await.unwrap();
 
     println!("bonding curve info: {:#?}", bonding_curve_and_mc_info);
@@ -140,11 +140,11 @@ async fn main() -> std::io::Result<()> {
         .datasource(helius_websocket::get_helius_websocket())
         .instruction(PumpfunDecoder, instruction_processor)
         .shutdown_strategy(carbon_core::pipeline::ShutdownStrategy::Immediate)
-        .build().unwrap()
+        .build()
+        .unwrap()
         .run()
-        .await.unwrap();
-
-
+        .await
+        .unwrap();
 
     HttpServer::new(move || {
         App::new()
@@ -152,9 +152,9 @@ async fn main() -> std::io::Result<()> {
             .wrap(
                 Cors::default()
                     .allow_any_origin()
-                    .allowed_methods(vec!["GET"])
+                    .allowed_methods(vec!["GET"]),
             )
-            .service(get_tokens) 
+            .service(get_tokens)
     })
     .bind(("0.0.0.0", 8000))?
     .run()
