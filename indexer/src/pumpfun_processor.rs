@@ -63,11 +63,20 @@ impl Processor for PumpfunInstructionProcessor {
                 // if it exists in our DB then only process it
                 if let Some(event) = map.get_mut(&trade_event.mint.to_string()) {
                     let progress = get_bonding_curve_progress(
-                        trade_event.real_token_reserves as u128,
+                        trade_event.real_token_reserves as i128,
                         793100000,
                     );
 
-                    let curve_result = i64::try_from(progress).unwrap();
+                    let curve_result = match i64::try_from(progress) {
+                        Ok(value) => value,
+                        Err(_) => {
+                            log::error!(
+                                "Failed to convert bonding curve progress: {}",
+                                progress
+                            );
+                            0
+                        }
+                    };
 
                     let market_cap = get_market_cap(
                         trade_event.virtual_sol_reserves,

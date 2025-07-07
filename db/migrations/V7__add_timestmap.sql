@@ -3,3 +3,6 @@ ALTER TABLE trade
 
 ALTER TABLE trade
     ADD COLUMN updated_at timestamptz NOT NULL;
+
+ALTER TABLE token
+    DROP COLUMMN volume;
