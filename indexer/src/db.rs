@@ -53,7 +53,6 @@ pub struct Token {
     contract_address: String,
     bonding_curve_percentage: i32,
     bond_status: String,
-    volume: Option<i64>,
     market_cap: Option<i64>,
     uri: String,
     bonding_curve_address: String,
