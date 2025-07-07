@@ -85,6 +85,8 @@ pub fn get_bonding_curve_progress(
     real_token_reserves: u128,
     initial_real_token_reserves: u128,
 ) -> u128 {
+    log::info!("real token reserves: {}", real_token_reserves);
+
     let left_tokens = (real_token_reserves / 10u128.pow(6)) - 206900000;
 
     println!("details: {} {}", left_tokens, initial_real_token_reserves);

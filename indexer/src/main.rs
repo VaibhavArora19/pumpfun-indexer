@@ -136,7 +136,9 @@ async fn main() -> std::io::Result<()> {
         sol_price: sol_price,
     };
 
-    Pipeline::builder()
+    tokio::spawn(async move {
+
+        Pipeline::builder()
         .datasource(helius_websocket::get_helius_websocket())
         .instruction(PumpfunDecoder, instruction_processor)
         .shutdown_strategy(carbon_core::pipeline::ShutdownStrategy::Immediate)
@@ -145,6 +147,7 @@ async fn main() -> std::io::Result<()> {
         .run()
         .await
         .unwrap();
+});
 
     HttpServer::new(move || {
         App::new()
