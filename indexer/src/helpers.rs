@@ -10,13 +10,11 @@ use solana_client::{
         self,
         header::{HeaderMap, HeaderValue, CONTENT_TYPE},
     },
-    nonblocking::rpc_client,
 };
 use solana_pubkey::Pubkey;
 use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use spl_associated_token_account_client::address::get_associated_token_address;
 use tokio::sync::RwLock;
-use uuid::Uuid;
 
 use crate::{config::IndexerConfig, utils::get_connection};
 
@@ -25,20 +23,13 @@ pub struct CoinPriceData {
     pub usd: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TradeInfo {
     pub sol_amount: u64,
     pub token_amount: u64,
     pub is_buy: bool,
     pub user: String,
     pub mint: String,
-}
-
-#[derive(Debug)]
-struct Holding {
-    token_id: Uuid,
-    user: String,
-    net_tokens: i64,
 }
 
 pub type CoinPriceResponse = HashMap<String, CoinPriceData>;
@@ -175,9 +166,9 @@ pub async fn store_in_redis(redis: &mut MultiplexedConnection, data: TradeEvent)
     log::info!("trade details: {:?}", trade_details);
 
     let _: () = redis
-        .set(data.mint.to_string(), trade_details)
+        .publish("trade", trade_details)
         .await
-        .unwrap();
+        .expect("Failed to publish trade details");
 
-    log::info!("stored in redis");
+    log::info!("redis published into trade channel");
 }

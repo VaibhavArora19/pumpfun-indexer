@@ -4,9 +4,10 @@ use std::{
 };
 
 use carbon_pumpfun_decoder::instructions::create_event::CreateEvent;
-use redis::{aio::MultiplexedConnection, AsyncCommands};
+use redis::{aio::MultiplexedConnection, AsyncCommands, PushInfo, Value};
 use serde::{Deserialize, Serialize};
 use solana_pubkey::Pubkey;
+use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use sqlx::{
     postgres::PgArguments,
     prelude::FromRow,
@@ -14,6 +15,7 @@ use sqlx::{
     types::chrono::{DateTime, Utc},
     Arguments, PgPool, Pool, Postgres,
 };
+use tokio::sync::mpsc::UnboundedReceiver;
 use uuid::Uuid;
 
 use crate::{
@@ -70,7 +72,7 @@ pub struct TokenDetails {
     contract_address: String,
     bonding_curve_percentage: i32,
     bond_status: String,
-    volume: Option<i64>,
+    volume: Option<f64>,
     market_cap: Option<i64>,
     uri: String,
     bonding_curve_address: String,
@@ -181,12 +183,6 @@ pub async fn update_bonding_curve_and_market_cap(db: Arc<PgPool>, updates: Bondi
         return;
     }
 
-    //clear the map after flushing into DB to avoid memory issues
-    // {
-    //     let mut clean_map = updates.write().await;
-    //     clean_map.clear();
-    // }
-
     let mut args = PgArguments::default();
 
     for (i, update) in updates_ref.iter().enumerate() {
@@ -212,60 +208,109 @@ pub async fn update_bonding_curve_and_market_cap(db: Arc<PgPool>, updates: Bondi
     log::info!("Update data with updates: {:#?}", updates);
 }
 
-pub async fn store_trades(redis: &mut MultiplexedConnection, db: Arc<PgPool>) {
-    let keys: Vec<String> = redis::cmd("KEYS")
-        .arg("*")
-        .query_async(redis)
+pub async fn consume_and_store(
+    redis: &mut MultiplexedConnection,
+    db: Arc<PgPool>,
+    rx: &mut UnboundedReceiver<PushInfo>,
+) {
+    let _ = redis
+        .psubscribe("trade")
         .await
-        .unwrap();
+        .expect("Failed to subscribe to trade channel");
 
-    if keys.len() == 0 {
-        return;
-    }
+    let mut cache_trades: Vec<TradeInfo> = Vec::new();
 
-    let values: Vec<String> = redis::cmd("MGET")
-        .arg(keys.clone())
-        .query_async(redis)
-        .await
-        .unwrap();
+    while let Some(msg) = rx.recv().await {
+        let message = msg.data;
 
-    log::info!("keys are: {:?}", keys);
-    log::info!("values are {:?}", values);
+        if message.len() < 3 {
+            log::error!("Received message with insufficient data: {:?}", message);
+            continue;
+        }
 
-    //flush redis here
-    let _: () = redis.flushall().await.unwrap();
+        if let Value::BulkString(ref data) = message[2] {
+            let Ok(str_data) = std::str::from_utf8(data) else {
+                log::error!("Invalid UTF-8 in message data");
+                return;
+            };
 
-    let mut parsed_info = Vec::new();
+            let Ok(parsed): Result<TradeInfo, _> = serde_json::from_str(str_data) else {
+                log::error!("Failed to deserialize TradeInfo");
+                return;
+            };
 
-    for item in values.into_iter() {
-        let parsed: TradeInfo = serde_json::from_str(&item).unwrap();
+            log::info!("Parsed TradeInfo: {:?}", parsed);
+            cache_trades.push(parsed);
 
-        parsed_info.push(parsed);
-    }
+            if cache_trades.len() > 10 {
+                let length = cache_trades.len();
+                let temp_trades = cache_trades.clone();
+                cache_trades.clear();
 
-    for trade in parsed_info {
-        let id = uuid::Uuid::new_v4();
-        let time = Utc::now();
+                let now = Utc::now();
 
-        let query = r#"
-        INSERT INTO trade (id, sol_amount, token_amount, is_buy, user_address, created_at, updated_at, token_id)
-        SELECT $1, $2, $3, $4, $5, $6, $7, id FROM token WHERE contract_address = $8
-        "#;
+                let db_clone = db.clone();
 
-        if let Err(err) = sqlx::query(query)
-            .bind(id)
-            .bind(trade.sol_amount as i64)
-            .bind(trade.token_amount as i64)
-            .bind(trade.is_buy)
-            .bind(trade.user.to_string())
-            .bind(time)
-            .bind(time)
-            .bind(trade.mint.to_string())
-            .execute(&*db)
-            .await
-        {
-            eprintln!("Failed to store trades. Failed with err: {:#?}", err);
-        };
+                tokio::spawn(async move {
+                    let mut ids = Vec::with_capacity(length);
+                    let mut sol_amounts = Vec::with_capacity(length);
+                    let mut token_amounts = Vec::with_capacity(length);
+                    let mut is_buys = Vec::with_capacity(length);
+                    let mut users = Vec::with_capacity(length);
+                    let mut created_ats = Vec::with_capacity(length);
+                    let mut updated_ats = Vec::with_capacity(length);
+                    let mut contract_addresses = Vec::with_capacity(length);
+
+                    for trade in temp_trades {
+                        ids.push(Uuid::new_v4());
+                        sol_amounts.push(trade.sol_amount as i64);
+                        token_amounts.push(trade.token_amount as i64);
+                        is_buys.push(trade.is_buy);
+                        users.push(trade.user.to_string());
+                        created_ats.push(now);
+                        updated_ats.push(now);
+                        contract_addresses.push(trade.mint.to_string());
+                    }
+
+                    let query = r#"
+                    INSERT INTO trade (id, sol_amount, token_amount, is_buy, user_address, created_at, updated_at, token_id)
+                    SELECT 
+                    i, s, t, b, u, c, up, tok.id
+                    FROM 
+                    UNNEST(
+                    $1::uuid[], 
+                    $2::bigint[], 
+                    $3::bigint[], 
+                    $4::bool[], 
+                    $5::text[], 
+                    $6::timestamptz[], 
+                    $7::timestamptz[], 
+                    $8::text[]
+                    ) AS tmp(i, s, t, b, u, c, up, ca)
+                    JOIN token tok ON tok.contract_address = tmp.ca
+                    "#;
+
+                    if let Err(err) = sqlx::query(query)
+                        .bind(&ids)
+                        .bind(&sol_amounts)
+                        .bind(&token_amounts)
+                        .bind(&is_buys)
+                        .bind(&users)
+                        .bind(&created_ats)
+                        .bind(&updated_ats)
+                        .bind(&contract_addresses)
+                        .execute(&*db_clone)
+                        .await
+                    {
+                        eprintln!("Failed to store trades batch: {:#?}", err);
+                    } else {
+                        log::info!("Stored trades batch successfully");
+                    }
+                });
+            }
+        } else {
+            log::error!("Unexpected message format: {:?}", message);
+        }
     }
 }
 
@@ -282,15 +327,15 @@ pub async fn fetch_token_data(db: &Pool<Postgres>) -> Vec<TokenDetails> {
     let token_map: HashMap<uuid::Uuid, Token> =
         all_tokens.iter().cloned().map(|t| (t.id, t)).collect();
 
-    let mut volume: HashMap<Uuid, i64> = HashMap::new();
+    let mut volume: HashMap<Uuid, f64> = HashMap::new();
 
     let mut holdings_map: HashMap<Uuid, Vec<Holding>> = HashMap::new();
 
     for trade in all_trades {
         volume
             .entry(trade.token_id)
-            .and_modify(|x| *x += trade.sol_amount)
-            .or_insert(trade.sol_amount);
+            .and_modify(|x| *x += trade.sol_amount as f64 / LAMPORTS_PER_SOL as f64)
+            .or_insert(trade.sol_amount as f64 / LAMPORTS_PER_SOL as f64);
 
         let entry = holdings_map.entry(trade.token_id).or_default();
         if let Some(user_holding) = entry.iter_mut().find(|h| h.user == trade.user_address) {
@@ -311,8 +356,6 @@ pub async fn fetch_token_data(db: &Pool<Postgres>) -> Vec<TokenDetails> {
             });
         }
     }
-
-    println!("holding map: {:#?}", holdings_map);
 
     let mut token_vec = Vec::new();
 
@@ -425,7 +468,7 @@ pub async fn fetch_token_data(db: &Pool<Postgres>) -> Vec<TokenDetails> {
             contract_address: t.contract_address.clone(),
             bonding_curve_percentage: t.bonding_curve_percentage,
             bond_status: t.bond_status.clone(),
-            volume: Some(0),
+            volume: Some(0.0),
             market_cap: t.market_cap,
             uri: t.uri.clone(),
             bonding_curve_address: t.bonding_curve_address.clone(),

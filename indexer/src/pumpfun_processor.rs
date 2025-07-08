@@ -70,10 +70,7 @@ impl Processor for PumpfunInstructionProcessor {
                     let curve_result = match i64::try_from(progress) {
                         Ok(value) => value,
                         Err(_) => {
-                            log::error!(
-                                "Failed to convert bonding curve progress: {}",
-                                progress
-                            );
+                            log::error!("Failed to convert bonding curve progress: {}", progress);
                             0
                         }
                     };

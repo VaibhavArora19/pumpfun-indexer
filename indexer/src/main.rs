@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     config::IndexerConfig,
     db::{
-        fetch_token_data, get_bonding_curve_and_mc_info, store_trades,
+        consume_and_store, fetch_token_data, get_bonding_curve_and_mc_info,
         update_bonding_curve_and_market_cap, BondingCurveAndMcInfo,
     },
     helpers::get_latest_sol_price,
@@ -15,7 +15,7 @@ use actix_web::{get, web, App, HttpResponse, HttpServer};
 use carbon_core::pipeline::Pipeline;
 use carbon_pumpfun_decoder::PumpfunDecoder;
 use dotenv::dotenv;
-use redis::AsyncCommands;
+use redis::{AsyncCommands, ConnectionAddr, ConnectionInfo, ProtocolVersion, RedisConnectionInfo};
 use sqlx::PgPool;
 use tokio::{sync::RwLock, time};
 
@@ -54,10 +54,25 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("Database Connected");
 
-    let redis_client = redis::Client::open(config.redis_url.clone()).unwrap();
+    let redis_info = RedisConnectionInfo {
+        db: 0,
+        username: None,
+        password: None,
+        protocol: ProtocolVersion::RESP3,
+    };
+
+    let connection_info = ConnectionInfo {
+        addr: ConnectionAddr::Tcp("127.0.0.1".into(), 6379),
+        redis: redis_info,
+    };
+
+    let redis_client = redis::Client::open(connection_info).unwrap();
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let redis_config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
 
     let mut connection = redis_client
-        .get_multiplexed_async_connection()
+        .get_multiplexed_async_connection_with_config(&redis_config)
         .await
         .unwrap();
 
@@ -122,7 +137,8 @@ async fn main() -> std::io::Result<()> {
     //flush redis data into DB
     tokio::spawn(async move {
         loop {
-            store_trades(&mut connection_clone.clone(), db_clone_2.clone()).await;
+            // store_trades(&mut connection_clone.clone(), db_clone_2.clone(), rx).await;
+            consume_and_store(&mut connection_clone.clone(), db_clone_2.clone(), &mut rx).await;
 
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         }
@@ -137,17 +153,16 @@ async fn main() -> std::io::Result<()> {
     };
 
     tokio::spawn(async move {
-
         Pipeline::builder()
-        .datasource(helius_websocket::get_helius_websocket())
-        .instruction(PumpfunDecoder, instruction_processor)
-        .shutdown_strategy(carbon_core::pipeline::ShutdownStrategy::Immediate)
-        .build()
-        .unwrap()
-        .run()
-        .await
-        .unwrap();
-});
+            .datasource(helius_websocket::get_helius_websocket())
+            .instruction(PumpfunDecoder, instruction_processor)
+            .shutdown_strategy(carbon_core::pipeline::ShutdownStrategy::Immediate)
+            .build()
+            .unwrap()
+            .run()
+            .await
+            .unwrap();
+    });
 
     HttpServer::new(move || {
         App::new()
