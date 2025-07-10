@@ -6,3 +6,6 @@ ALTER TABLE trade
 
 ALTER TABLE token
     DROP COLUMN volume;
+
+ALTER TABLE token
+    DROP COLUMN creator_holding_percentage;

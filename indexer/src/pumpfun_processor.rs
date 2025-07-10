@@ -12,15 +12,14 @@ use tokio::sync::RwLock;
 
 use crate::{
     config::IndexerConfig,
-    db::{change_status, create_token, BondingCurveAndMcInfo},
+    db::token::{change_status, create_token},
     helpers::{get_bonding_curve_progress, get_market_cap, store_in_redis},
-    types::BondStatus,
+    types::{BondStatus, BondingCurveAndMcInfo},
     BondingMcStateMap,
 };
 
 pub struct PumpfunInstructionProcessor {
     pub db: Arc<PgPool>,
-    pub config: IndexerConfig,
     pub redis: MultiplexedConnection,
     pub bonding_state_map: BondingMcStateMap,
     pub sol_price: Arc<RwLock<f64>>,
@@ -42,7 +41,7 @@ impl Processor for PumpfunInstructionProcessor {
         match pumpfun_instruction {
             PumpfunInstruction::CreateEvent(create_event) => {
                 log::info!("New token created: {:#?}", create_event);
-                create_token(self.db.clone(), &self.config, create_event.clone()).await;
+                create_token(self.db.clone(), create_event.clone()).await;
 
                 let mut map = self.bonding_state_map.write().await;
 
@@ -63,8 +62,8 @@ impl Processor for PumpfunInstructionProcessor {
                 // if it exists in our DB then only process it
                 if let Some(event) = map.get_mut(&trade_event.mint.to_string()) {
                     let progress = get_bonding_curve_progress(
-                        trade_event.real_token_reserves as i128,
-                        793100000,
+                        trade_event.virtual_token_reserves as i128,
+                        // 793100000,
                     );
 
                     let curve_result = match i64::try_from(progress) {

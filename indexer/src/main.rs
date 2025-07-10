@@ -3,11 +3,13 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     config::IndexerConfig,
     db::{
-        consume_and_store, fetch_token_data, get_bonding_curve_and_mc_info,
-        update_bonding_curve_and_market_cap, BondingCurveAndMcInfo,
+        query::fetch_token_data,
+        token::{get_bonding_curve_and_mc_info, update_bonding_curve_and_market_cap},
+        trade::consume_and_store,
     },
     helpers::get_latest_sol_price,
     pumpfun_processor::PumpfunInstructionProcessor,
+    types::BondingCurveAndMcInfo,
     utils::connect_db,
 };
 use actix_cors::Cors;
@@ -137,7 +139,6 @@ async fn main() -> std::io::Result<()> {
     //flush redis data into DB
     tokio::spawn(async move {
         loop {
-            // store_trades(&mut connection_clone.clone(), db_clone_2.clone(), rx).await;
             consume_and_store(&mut connection_clone.clone(), db_clone_2.clone(), &mut rx).await;
 
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
@@ -146,7 +147,6 @@ async fn main() -> std::io::Result<()> {
 
     let instruction_processor = PumpfunInstructionProcessor {
         db: db.clone(),
-        config,
         redis: connection,
         bonding_state_map: bonding_curve_and_mc_info_map,
         sol_price: sol_price,

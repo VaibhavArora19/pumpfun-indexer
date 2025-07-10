@@ -5,11 +5,9 @@ use carbon_pumpfun_decoder::instructions::trade_event::TradeEvent;
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use serde::{Deserialize, Serialize};
 use solana_account_decoder::parse_token::UiTokenAmount;
-use solana_client::{
-    client_error::reqwest::{
-        self,
-        header::{HeaderMap, HeaderValue, CONTENT_TYPE},
-    },
+use solana_client::client_error::reqwest::{
+    self,
+    header::{HeaderMap, HeaderValue, CONTENT_TYPE},
 };
 use solana_pubkey::Pubkey;
 use solana_sdk::native_token::LAMPORTS_PER_SOL;
@@ -49,7 +47,7 @@ pub async fn get_creator_holding_balance(
     wallet_address: Pubkey,
     mint: Pubkey,
     config: &IndexerConfig,
-) -> f64 {
+) -> i64 {
     let rpc_client = get_connection(config);
 
     let ata = get_associated_token_address(&wallet_address, &mint);
@@ -68,24 +66,31 @@ pub async fn get_creator_holding_balance(
     //     / total_supply.amount.parse::<f64>().unwrap())
     //     * 100.0;
 
-    balance.amount.parse::<f64>().unwrap()
+    balance.amount.parse::<i64>().unwrap()
     // return holding_percentage;
 }
 
-pub fn get_bonding_curve_progress(
-    real_token_reserves: i128,
-    initial_real_token_reserves: i128,
-) -> i128 {
-    log::info!("real token reserves: {}", real_token_reserves);
+// pub fn get_bonding_curve_progress(
+//     real_token_reserves: i128,
+//     initial_real_token_reserves: i128,
+// ) -> i128 {
+//     log::info!("real token reserves: {}", real_token_reserves);
 
-    let left_tokens = (real_token_reserves / 10i128.pow(6)) - 206900000;
+//     let left_tokens = (real_token_reserves / 10i128.pow(6)) - 206900000;
 
-    println!("details: {} {}", left_tokens, initial_real_token_reserves);
+//     println!("details: {} {}", left_tokens, initial_real_token_reserves);
 
-    let bonding_curve: f64 =
-        100.0 - ((left_tokens as f64 / initial_real_token_reserves as f64) * 100.0);
+//     let bonding_curve: f64 =
+//         100.0 - ((left_tokens as f64 / initial_real_token_reserves as f64) * 100.0);
 
-    return bonding_curve.floor() as i128;
+//     return bonding_curve.floor() as i128;
+// }
+
+pub fn get_bonding_curve_progress(virtual_token_reserve: i128) -> i128 {
+    let progress =
+        (1073000000 * 10i128.pow(6) - virtual_token_reserve) * 100 / (793100000 * 10i128.pow(6));
+
+    return progress;
 }
 
 pub async fn get_market_cap(
