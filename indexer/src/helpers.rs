@@ -4,17 +4,14 @@ use anyhow::Error;
 use carbon_pumpfun_decoder::instructions::trade_event::TradeEvent;
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use serde::{Deserialize, Serialize};
-use solana_account_decoder::parse_token::UiTokenAmount;
 use solana_client::client_error::reqwest::{
     self,
     header::{HeaderMap, HeaderValue, CONTENT_TYPE},
 };
-use solana_pubkey::Pubkey;
 use solana_sdk::native_token::LAMPORTS_PER_SOL;
-use spl_associated_token_account_client::address::get_associated_token_address;
 use tokio::sync::RwLock;
 
-use crate::{config::IndexerConfig, utils::get_connection};
+use crate::{config::IndexerConfig};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CoinPriceData {
@@ -32,60 +29,7 @@ pub struct TradeInfo {
 
 pub type CoinPriceResponse = HashMap<String, CoinPriceData>;
 
-pub async fn get_total_supply(mint: Pubkey, config: &IndexerConfig) -> f64 {
-    let rpc_client = get_connection(config);
-
-    let total_supply = rpc_client
-        .get_token_supply(&mint)
-        .await
-        .expect("Failed to fetch total supply of the token");
-
-    total_supply.amount.parse::<f64>().unwrap()
-}
-
-pub async fn get_creator_holding_balance(
-    wallet_address: Pubkey,
-    mint: Pubkey,
-    config: &IndexerConfig,
-) -> i64 {
-    let rpc_client = get_connection(config);
-
-    let ata = get_associated_token_address(&wallet_address, &mint);
-
-    let balance = match rpc_client.get_token_account_balance(&ata).await {
-        Ok(bal) => bal,
-        Err(_) => UiTokenAmount {
-            ui_amount: Some(0.0),
-            decimals: 6,
-            amount: "0".to_string(),
-            ui_amount_string: "0".to_string(),
-        },
-    };
-
-    // let holding_percentage = (balance.amount.parse::<f64>().unwrap()
-    //     / total_supply.amount.parse::<f64>().unwrap())
-    //     * 100.0;
-
-    balance.amount.parse::<i64>().unwrap()
-    // return holding_percentage;
-}
-
-// pub fn get_bonding_curve_progress(
-//     real_token_reserves: i128,
-//     initial_real_token_reserves: i128,
-// ) -> i128 {
-//     log::info!("real token reserves: {}", real_token_reserves);
-
-//     let left_tokens = (real_token_reserves / 10i128.pow(6)) - 206900000;
-
-//     println!("details: {} {}", left_tokens, initial_real_token_reserves);
-
-//     let bonding_curve: f64 =
-//         100.0 - ((left_tokens as f64 / initial_real_token_reserves as f64) * 100.0);
-
-//     return bonding_curve.floor() as i128;
-// }
-
+// Function to calculate the bonding curve progress based on the virtual token reserve
 pub fn get_bonding_curve_progress(virtual_token_reserve: i128) -> i128 {
     let progress =
         (1073000000 * 10i128.pow(6) - virtual_token_reserve) * 100 / (793100000 * 10i128.pow(6));
@@ -93,6 +37,7 @@ pub fn get_bonding_curve_progress(virtual_token_reserve: i128) -> i128 {
     return progress;
 }
 
+// Function to calculate the market cap based on the virtual reserves, total supply, and latest SOL price in USD
 pub async fn get_market_cap(
     virtual_sol_reserves: u64,
     virtual_token_reserve: u64,
@@ -123,6 +68,7 @@ pub async fn get_market_cap(
     return mc as i64;
 }
 
+// Function to fetch the latest SOL price from the CoinGecko API
 pub async fn get_latest_sol_price() -> Result<f64, Error> {
     let api_key = IndexerConfig::get_config().coingecko_api;
 

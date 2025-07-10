@@ -9,6 +9,7 @@ use crate::{
     BondingMcStateMap,
 };
 
+// This function creates a new token in the database based on the provided CreateEvent data.
 pub async fn create_token(db: Arc<PgPool>, create_event: CreateEvent) {
     let id = uuid::Uuid::new_v4();
     let current_time = Utc::now();
@@ -45,6 +46,7 @@ pub async fn create_token(db: Arc<PgPool>, create_event: CreateEvent) {
     }
 }
 
+// This function retrieves bonding curve and market cap information for all tokens from the database.
 pub async fn get_bonding_curve_and_mc_info(
     db: Arc<PgPool>,
 ) -> Result<Vec<BondingCurveAndMcInfo>, anyhow::Error> {
@@ -66,6 +68,7 @@ pub async fn get_bonding_curve_and_mc_info(
     return Ok(bonding_curve_info);
 }
 
+// This function updates the bonding curve percentage and market cap for multiple tokens in the database. This is an Update many call which saves a lot of computation time.
 pub async fn update_bonding_curve_and_market_cap(db: Arc<PgPool>, updates: BondingMcStateMap) {
     log::info!("Entered into sql function");
     let mut sql = String::from("UPDATE token AS t SET market_cap = u.market_cap, bonding_curve_percentage = u.bonding_curve_percentage FROM (VALUES");

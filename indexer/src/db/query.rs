@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::types::{BondStatus, Holding, Token, TokenDetails, Trade};
 
+/// Fetches token data from the database and calculates various metrics such as volume, market cap, top_10_holding_percentage, and creator percentage etc.
 pub async fn fetch_token_data(db: &Pool<Postgres>) -> Vec<TokenDetails> {
     let all_trades = sqlx::query_as::<_, Trade>(r#"SELECT * FROM trade"#)
         .fetch_all(&*db)

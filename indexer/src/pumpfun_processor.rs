@@ -28,16 +28,17 @@ pub struct PumpfunInstructionProcessor {
 impl Processor for PumpfunInstructionProcessor {
     type InputType = InstructionProcessorInputType<PumpfunInstruction>;
 
+    //This function is called whenever any kind of event is emitted from the Pumpfun program.
     async fn process(
         &mut self,
         data: Self::InputType,
         _metrics: Arc<MetricsCollection>,
     ) -> CarbonResult<()> {
         let pumpfun_instruction: PumpfunInstruction = data.1.data;
-        // println!("pump fun {:?}", pumpfun_instruction);
 
-        //in case of sell event you are getting the creator address in create event so in every sell event, check if creator sold and store
+        //Pattern matching to check which event is being processed
         match pumpfun_instruction {
+            // This is the event when a new token is created
             PumpfunInstruction::CreateEvent(create_event) => {
                 log::info!("New token created: {:#?}", create_event);
                 create_token(self.db.clone(), create_event.clone()).await;
@@ -54,15 +55,14 @@ impl Processor for PumpfunInstructionProcessor {
                     },
                 );
             }
+            // This is the event when a trade event occurs for any token
             PumpfunInstruction::TradeEvent(trade_event) => {
-                // log::info!("Big trade occured: {:#?}", trade_event);
                 let mut map = self.bonding_state_map.write().await;
 
-                // if it exists in our DB then only process it
+                // if the token exists in our DB and here in our Hashmap, then only process it
                 if let Some(event) = map.get_mut(&trade_event.mint.to_string()) {
                     let progress = get_bonding_curve_progress(
                         trade_event.virtual_token_reserves as i128,
-                        // 793100000,
                     );
 
                     let curve_result = match i64::try_from(progress) {
@@ -73,6 +73,7 @@ impl Processor for PumpfunInstructionProcessor {
                         }
                     };
 
+                    //Get the market cap based on the virtual reserves, total supply, and latest SOL price in USD
                     let market_cap = get_market_cap(
                         trade_event.virtual_sol_reserves,
                         trade_event.virtual_token_reserves,
@@ -89,20 +90,23 @@ impl Processor for PumpfunInstructionProcessor {
                         curve_result
                     );
 
+                    //Update the hashmap key-value pair with the new bonding curve percentage and market cap
                     event.bonding_curve_percentage = curve_result as i32;
                     event.market_cap = Some(market_cap);
 
                     let mut redis_clone = self.redis.clone();
 
-                    //create a new thread to keep this block non-blocking
+                    //create a new thread that publishes the data in the "trade" channel to keep this block non-blocking
                     tokio::spawn(async move {
                         store_in_redis(&mut redis_clone, trade_event).await;
                     });
                 }
             }
+            // This is the event when a token is graduated
             PumpfunInstruction::CompleteEvent(complete_event) => {
                 log::info!("Bonded: {:#?}", complete_event);
 
+                //Change the status of the token to "Graduated" in the DB
                 change_status(BondStatus::Graduated, complete_event.mint, self.db.clone()).await;
             }
             _ => {}

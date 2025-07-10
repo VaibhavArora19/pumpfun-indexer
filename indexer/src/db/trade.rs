@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::helpers::TradeInfo;
 
+// Consumes messages from the Redis channel and stores them in the database once the trades count exceeds 10.
 pub async fn consume_and_store(
     redis: &mut MultiplexedConnection,
     db: Arc<PgPool>,
