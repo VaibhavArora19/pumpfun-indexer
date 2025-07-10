@@ -22,6 +22,7 @@ pub enum ConfigError {
     InvalidCoingeckoAPI,
 }
 
+// Environment variable configuration for the indexer
 impl IndexerConfig {
     pub fn get_config() -> Self {
         let api_key =

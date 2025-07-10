@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 
 use crate::config::IndexerConfig;
 
+//Helius WebSocket configuration for subscribing to transactions related to the Pumpfun program, to be passed into the Helius WebSocket datasource.
 pub fn get_helius_websocket() -> HeliusWebsocket {
     let api_key = IndexerConfig::get_config().api_key;
 
