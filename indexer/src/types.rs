@@ -6,7 +6,7 @@ use sqlx::{
 };
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type, Serialize, Deserialize)]
 #[sqlx(type_name = "Text")]
 #[sqlx(rename_all = "snake_case")]
 pub enum BondStatus {
@@ -44,7 +44,7 @@ pub struct Token {
     pub ticker: String,
     pub contract_address: String,
     pub bonding_curve_percentage: i32,
-    pub bond_status: String,
+    pub bond_status: BondStatus,
     pub market_cap: Option<i64>,
     pub uri: String,
     pub bonding_curve_address: String,
@@ -60,7 +60,7 @@ pub struct TokenDetails {
     pub ticker: String,
     pub contract_address: String,
     pub bonding_curve_percentage: i32,
-    pub bond_status: String,
+    pub bond_status: BondStatus,
     pub volume: Option<f64>,
     pub market_cap: Option<i64>,
     pub uri: String,

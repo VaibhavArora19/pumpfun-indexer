@@ -11,7 +11,6 @@ use sqlx::PgPool;
 use tokio::sync::RwLock;
 
 use crate::{
-    config::IndexerConfig,
     db::token::{change_status, create_token},
     helpers::{get_bonding_curve_progress, get_market_cap, store_in_redis},
     types::{BondStatus, BondingCurveAndMcInfo},

@@ -5,7 +5,6 @@ use solana_pubkey::Pubkey;
 use sqlx::{postgres::PgArguments, query_with, types::chrono::Utc, Arguments, PgPool};
 
 use crate::{
-    config::IndexerConfig,
     types::{BondStatus, BondingCurveAndMcInfo},
     BondingMcStateMap,
 };
@@ -13,9 +12,6 @@ use crate::{
 pub async fn create_token(db: Arc<PgPool>, create_event: CreateEvent) {
     let id = uuid::Uuid::new_v4();
     let current_time = Utc::now();
-
-    // let creator_initial_balance =
-    //     get_creator_holding_balance(create_event.creator, create_event.mint, config).await;
 
     let insert_sql = r#"
     INSERT INTO token(

@@ -3,7 +3,7 @@ use sqlx::{Pool, Postgres};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use crate::types::{Holding, Token, TokenDetails, Trade};
+use crate::types::{BondStatus, Holding, Token, TokenDetails, Trade};
 
 pub async fn fetch_token_data(db: &Pool<Postgres>) -> Vec<TokenDetails> {
     let all_trades = sqlx::query_as::<_, Trade>(r#"SELECT * FROM trade"#)
@@ -98,12 +98,12 @@ pub async fn fetch_token_data(db: &Pool<Postgres>) -> Vec<TokenDetails> {
                 ticker: token_details.ticker.clone(),
                 contract_address: token_details.contract_address.clone(),
                 bonding_curve_percentage: token_details.bonding_curve_percentage,
-                bond_status: if market_cap > 25000 && market_cap < 62500 {
-                    "Graduating".to_string()
+                bond_status: if token_details.bond_status == BondStatus::Graduated { BondStatus::Graduated } else if market_cap > 25000 && market_cap < 62500 {
+                    BondStatus::Graduating
                 } else if market_cap < 25000 {
-                    "Newly launched".to_string()
+                   BondStatus::NewlyLaunched
                 } else {
-                    "Graduated".to_string()
+                    BondStatus::Graduated
                 },
                 volume,
                 market_cap: token_details.market_cap,
